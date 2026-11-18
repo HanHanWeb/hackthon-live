@@ -997,9 +997,17 @@ textarea.field {
     padding-top: 24px;
   }
 
+  /* sticky 应用到 aside 内部 wrapper，避免 grid item 自身 sticky 时初始位置偏移 */
   .admin-aside {
+    align-self: start;
+  }
+
+  .admin-aside-sticky {
     position: sticky;
-    top: 84px;
+    top: 81px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
 }
 

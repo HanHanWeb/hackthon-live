@@ -317,7 +317,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
 
           <div className="flex items-center gap-2">
             {error ? <span className="text-xs text-rose-400">{error}</span> : null}
-            <Button variant="ghost" size="sm" isDisabled={!dirty || saving} onPress={reset}>
+            <Button variant="outline" size="sm" isDisabled={!dirty || saving} onPress={reset}>
               撤销
             </Button>
             <Button variant="secondary" size="sm" onPress={() => window.open("/", "_blank", "noopener")}>
@@ -629,7 +629,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               <div className="group">
                 <div className="flex items-center justify-between gap-3">
                   <div className="group-title mb-0">切入动画</div>
-                  <Button size="sm" variant="ghost" onPress={replay}>
+                  <Button size="sm" variant="outline" onPress={replay}>
                     重播动画
                   </Button>
                 </div>
@@ -708,7 +708,8 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
 
         </main>
 
-        <aside className="admin-aside vstack">
+        <aside className="admin-aside">
+          <div className="admin-aside-sticky">
           <Card.Root className="panel panel-pad panel-card">
             <Card.Header className="section-head">
               <div className="section-head-main">
@@ -719,14 +720,13 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               </div>
               <div className="section-head-actions">
                 <span className="preview-live">跟随草稿</span>
-                <Button size="sm" variant="ghost" onPress={replay}>
+                <Button size="sm" variant="outline" onPress={replay}>
                   重播
                 </Button>
               </div>
             </Card.Header>
             <Card.Content className="panel-content">
               <div ref={frameRef} className="preview-frame">
-                <span className="preview-badge">{draft.mode.toUpperCase()}</span>
                 <iframe
                   key={previewKey}
                   ref={previewRef}
@@ -757,6 +757,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               </li>
             </ul>
           </section>
+          </div>
         </aside>
       </div>
 
@@ -876,7 +877,7 @@ function Section({
         </div>
         <div className="section-head-actions">
           {dirty ? (
-            <Button size="sm" variant="ghost" onPress={onRevert}>
+            <Button size="sm" variant="outline" onPress={onRevert}>
               还原本节
             </Button>
           ) : null}
