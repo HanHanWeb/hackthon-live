@@ -1,0 +1,11 @@
+.shots/
+node_modules
+.next
+out
+*.log
+.DS_Store
+.env*.local
+next-env.d.ts
+*.tsbuildinfo
+data/config.json.tmp
+data/config.json
