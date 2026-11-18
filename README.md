@@ -3,7 +3,7 @@
 黑客松现场的「大屏 + 后台」两人组：一块屏幕，两种形态 —— **倒计时**与**格言**，后台点几下就能换。
 
 - **大屏** `/`：全屏投放，深色 HUD 风格，倒计时数字带入场动画，格言有三种切入动画（默认「切入」，逐词从遮罩里推上来）与 9 个落位。
-- **后台** `/admin`：无登录，改完即生效；右侧 16:9 实时预览（滚动时固定跟随），未发布的改动随时可整体或按节撤销。
+- **后台** `/setting`：无登录，改完即生效；右侧 16:9 实时预览（滚动时固定跟随），未发布的改动随时可整体或按节撤销。
 
 ## 功能
 
@@ -54,7 +54,7 @@
 
 ```bash
 npm install
-npm run dev      # http://localhost:3000 大屏，/admin 后台
+npm run dev      # http://localhost:3000 大屏，/setting 后台
 npm run build && npm run start   # 生产模式
 npm run typecheck                # tsc --noEmit
 ```
@@ -80,7 +80,7 @@ npm run typecheck                # tsc --noEmit
 src/
   app/
     page.tsx              大屏入口
-    admin/page.tsx        后台入口
+    setting/page.tsx      后台入口
     api/config/route.ts   GET 读取 / POST 保存
     globals.css           设计系统（舞台、倒计时、格言、后台）
   components/
@@ -100,6 +100,6 @@ data/config.json   运行时配置
 
 - 现场用 Chrome / Edge 全屏（F11）打开 `/`，分辨率建议 1920×1080 及以上
 - 主持人快捷键（只作用在当前这台大屏、不写回配置）：`1` 倒计时、`2` 格言、`3` 自动轮播、`0` / `Esc` 恢复后台设定
-- 后台建议只在内网开放：**没有登录**，任何能访问 `/admin` 的人都能改内容
+- 后台建议只在内网开放：**没有登录**，任何能访问 `/setting` 的人都能改内容
 - 想换素材最快的方式：改 `data/config.json` 后等 4 秒，或直接在后台改并保存
 - 需要接 OBS / 直播：把 `/` 作为浏览器源叠加即可（背景自带深色底与光晕）
