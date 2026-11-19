@@ -2,7 +2,7 @@
 @source "../../src";
 
 @theme inline {
-  --font-sans: var(--font-space-grotesk), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+  --font-sans: var(--font-space-grotesk), "PingFang SC", "Hiragino Sans GB", "微软雅黑",
     ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", "Cascadia Code", monospace;
 }
@@ -214,12 +214,8 @@ body {
   padding: clamp(12px, 2vh, 32px) 0;
 }
 
-/* ---------------------------------------------------------------- mode transition
-   倒计时 ↔ 格言 串行切换：
-   - 旧视图沿方向轴快速淡出 + 缩放 + 模糊（360ms）
-   - 旧视图完全卸载后，新视图才挂载并播进入动画（520ms）
-   - 两阶段不重叠，画面干净
------------------------------------------------------------------------------ */
+/* 模式切换：旧视图先完全退出（360ms），卸载后新视图才挂载进入（520ms）。
+   只用 opacity + transform，不用 blur —— 大面积 blur 动画走 CPU 光栅化，大屏上会卡。 */
 
 .stage-viewport {
   position: relative;
@@ -235,10 +231,9 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
 }
 
-/* 让 motto 的绝对定位层在 viewport 内正确铺开 */
 .stage-motto-view {
   position: absolute;
   inset: 0;
@@ -249,7 +244,6 @@ body {
   inset: 0;
 }
 
-/* 进入动画：从方向轴远端推入 + 微缩放 + 去模糊 */
 .stage-view[data-role="enter"][data-direction="forward"] {
   animation: view-enter-forward 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -258,7 +252,6 @@ body {
   animation: view-enter-backward 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 退出动画：沿方向轴快速推出 + 缩小 + 模糊 */
 .stage-view[data-role="leave"][data-direction="forward"] {
   animation: view-leave-forward 360ms cubic-bezier(0.5, 0, 0.75, 0.4) both;
   pointer-events: none;
@@ -269,17 +262,14 @@ body {
   pointer-events: none;
 }
 
-/* forward: 倒计时 → 格言（旧向上推出、新从下方进入） */
 @keyframes view-leave-forward {
   0% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
   100% {
     opacity: 0;
     transform: translate3d(0, -4vh, 0) scale(0.94);
-    filter: blur(10px);
   }
 }
 
@@ -287,30 +277,21 @@ body {
   0% {
     opacity: 0;
     transform: translate3d(0, 5vh, 0) scale(1.05);
-    filter: blur(14px);
-  }
-  60% {
-    opacity: 1;
-    filter: blur(2px);
   }
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
 }
 
-/* backward: 格言 → 倒计时（旧向下坠落、新从上方坠入） */
 @keyframes view-leave-backward {
   0% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
   100% {
     opacity: 0;
     transform: translate3d(0, 4vh, 0) scale(0.95);
-    filter: blur(10px);
   }
 }
 
@@ -318,16 +299,10 @@ body {
   0% {
     opacity: 0;
     transform: translate3d(0, -5vh, 0) scale(1.06);
-    filter: blur(14px);
-  }
-  60% {
-    opacity: 1;
-    filter: blur(2px);
   }
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
   }
 }
 
@@ -580,7 +555,7 @@ body {
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
-/* 切入：PPT 式遮罩上浮，逐词从下方切入 */
+/* 切入动画：词从下方遮罩里推上来，padding/margin 抵消避免裁掉字形的上下延伸部分 */
 .word-mask {
   display: inline-block;
   overflow: hidden;
@@ -619,8 +594,8 @@ body {
     radial-gradient(70% 50% at 100% 0%, color-mix(in oklab, var(--accent-2) 8%, transparent), transparent 58%),
     #06070c;
 
-  /* 覆盖 HeroUI 派生 token：color-mix 在 :root 定义时会被算成字面值，
-     只改 --accent 不会让这些派生值重新计算，必须在后台作用域里重新派生一次 */
+  /* HeroUI 的派生 token（--accent-hover 等）在 :root 定义时 color-mix 已被算成字面值，
+     只改 --accent 不会重新计算，必须在后台作用域里重新派生一次才能跟随主题色 */
   --accent-hover: color-mix(in oklab, var(--accent) 88%, white 12%);
   --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
   --accent-soft-hover: color-mix(in oklab, var(--accent) 24%, transparent);
@@ -659,7 +634,6 @@ body {
   text-wrap: pretty;
 }
 
-/* Field 内的提示允许换行，避免 nowrap 把网格撑破 */
 .field-group > .hint {
   white-space: normal;
 }
@@ -675,7 +649,6 @@ body {
   flex-direction: column;
 }
 
-/* HeroUI Tabs.ListContainer 是外层包装，去掉默认样式 */
 .seg-tabs > .tabs__list-container {
   padding: 0;
   background: transparent;
@@ -692,7 +665,7 @@ body {
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* 分段控制器模式下不渲染 panel 内容，也不占布局 */
+/* Tabs 当分段控制器用，panel 不渲染内容也不占布局 */
 .seg-tabs > .tabs__panel {
   display: none !important;
 }
@@ -711,7 +684,6 @@ body {
   transition: color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 
-/* 清掉 HeroUI Tabs 给 tab 自带的样式，让我们的 .seg-chip 完全接管 */
 .seg-group .seg-chip::before,
 .seg-group .seg-chip::after,
 .seg-group .tabs__separator {
@@ -797,22 +769,6 @@ body {
   color-scheme: dark;
 }
 
-.preview-badge {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 5;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: #9aa0b8;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 3px 8px;
-  border-radius: 999px;
-}
-
 .anim-grid .chip {
   width: 100%;
   border-radius: 999px;
@@ -842,12 +798,9 @@ body {
   flex: none;
 }
 
-/* HeroUI 按钮固定 w-10 (40px)，grid 必须配套 40px，否则加号会被推出格子 */
-.num-field .number-field__group {
-  grid-template-columns: 40px minmax(0, 1fr) 40px;
-}
-
-/* 强制覆盖 :has() 的高优先级规则 */
+/* HeroUI 步进按钮固定 w-10 (40px)，grid 列宽必须配套，否则 +/− 会被推出格子、数字偏移。
+   且必须用 :has() 同等优先级覆盖 HeroUI 默认的 grid-template-columns 规则 */
+.num-field .number-field__group,
 .num-field .number-field__group:has([slot="decrement"]),
 .num-field .number-field__group:has([slot="increment"]),
 .num-field .number-field__group:has([slot="decrement"]):has([slot="increment"]) {
@@ -860,7 +813,6 @@ body {
   padding-right: 0;
 }
 
-/* 按钮符号居中且不受 scale transform 影响位置 */
 .num-field .number-field__increment-button,
 .num-field .number-field__decrement-button {
   width: 40px;
@@ -1183,7 +1135,8 @@ textarea.field {
     padding-top: 24px;
   }
 
-  /* sticky 应用到 aside 内部 wrapper，避免 grid item 自身 sticky 时初始位置偏移 */
+  /* sticky 放在 aside 内部 wrapper 上：grid item 自身 sticky 会让初始位置偏移，
+     导致右栏比左栏低几 px，无法顶部对齐 */
   .admin-aside {
     align-self: start;
   }
@@ -1349,17 +1302,24 @@ textarea.field {
 
 .toast-region {
   position: fixed;
-  left: 50%;
-  bottom: 24px;
+  top: 76px;
+  left: 0;
+  right: 0;
   z-index: 60;
-  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
   pointer-events: none;
 }
 
 .toast {
-  padding: 9px 16px;
+  /* flex item 默认 stretch，必须收回，否则会被拉成 region 全宽 */
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: fit-content;
+  padding: 10px 18px;
   border-radius: 999px;
   font-size: 12.5px;
+  line-height: 1.5;
   font-family: var(--font-sans);
   white-space: nowrap;
   backdrop-filter: blur(12px);
@@ -1386,7 +1346,7 @@ textarea.field {
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(-8px);
   }
   to {
     opacity: 1;
