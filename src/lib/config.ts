@@ -24,13 +24,8 @@ export interface CountdownConfig {
   subtitle: string;
   /** 目标时间，本地时间 naive 字符串：YYYY-MM-DDTHH:mm */
   targetAt: string;
-  /** 开始时间（可选，用于进度条） */
-  startAt: string;
-  /** 单位文案写死在 COUNTDOWN_LABELS，后台不提供设置 */
   /** 倒计时结束后的文案 */
   finishedText: string;
-  showProgress: boolean;
-  showClock: boolean;
 }
 
 /** 四个单位文案：写死，不开放配置 */
@@ -110,10 +105,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     title: "HACKATHON 2026",
     subtitle: "48 小时，从零到一",
     targetAt: "2026-11-20T09:00",
-    startAt: "",
     finishedText: "代码已开写 · LET'S BUILD",
-    showProgress: true,
-    showClock: true,
   },
   motto: {
     quotes: [
@@ -188,10 +180,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       title: str(countdownRaw.title, DEFAULT_CONFIG.countdown.title, 120),
       subtitle: str(countdownRaw.subtitle, DEFAULT_CONFIG.countdown.subtitle, 200),
       targetAt: dateLocal(countdownRaw.targetAt, ""),
-      startAt: dateLocal(countdownRaw.startAt, ""),
       finishedText: str(countdownRaw.finishedText, DEFAULT_CONFIG.countdown.finishedText, 200),
-      showProgress: bool(countdownRaw.showProgress, DEFAULT_CONFIG.countdown.showProgress),
-      showClock: bool(countdownRaw.showClock, DEFAULT_CONFIG.countdown.showClock),
     },
     motto: {
       quotes,

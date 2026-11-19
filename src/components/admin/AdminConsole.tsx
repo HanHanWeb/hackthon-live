@@ -18,14 +18,12 @@ import {
 } from "@heroui/react";
 import {
   MOTTO_ANIMATIONS,
-  MOTTO_POSITIONS,
   QUOTE_MAX_COUNT,
   type AppConfig,
   type CountdownConfig,
   type DisplayMode,
   type MottoAnimation,
   type MottoConfig,
-  type MottoPosition,
   type TextAlign,
   type ThemeConfig,
 } from "@/lib/config";
@@ -98,22 +96,16 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
     const errors: { field: "startAt" | "targetAt"; message: string }[] = [];
     const warnings: { field: "startAt" | "targetAt"; message: string }[] = [];
     const target = parseLocal(draft.countdown.targetAt);
-    const start = parseLocal(draft.countdown.startAt);
 
     if (!target) {
       warnings.push({
         field: "targetAt",
         message: "还没有设置结束时间，大屏会显示「未设置时间」。",
       });
-    } else if (start && start.getTime() >= target.getTime()) {
-      errors.push({
-        field: "startAt",
-        message: "开始时间需要早于结束时间，否则进度条无法计算。",
-      });
     }
 
     return { errors, warnings };
-  }, [draft.countdown.startAt, draft.countdown.targetAt]);
+  }, [draft.countdown.targetAt]);
 
   const showToast = useCallback((text: string, tone: ToastState["tone"]) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -186,7 +178,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
       setSaved(next);
       setDraft(next);
       setQuotesText(next.motto.quotes.join("\n"));
-      showToast("已发布 REV " + next.revision + " · 大屏 4 秒内同步", "ok");
+      showToast("已保存", "ok");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "保存失败";
       setError(message);
@@ -286,7 +278,6 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
         ? "整屏固定显示倒计时，适合开场与冲刺阶段。"
         : "整屏固定显示格言，适合暖场与休息时间。";
 
-  const startError = issues.errors.find((issue) => issue.field === "startAt");
   const targetWarning = issues.warnings.find((issue) => issue.field === "targetAt");
   const blocked = issues.errors.length > 0;
 
@@ -446,33 +437,14 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
             <div className="vstack">
               <div className="group">
                 <div className="group-title">时间</div>
-                <div className="grid-2">
-                  <Field
-                    label="结束时间"
-                    hint="倒计时走到 00:00:00 的时刻"
-                    warning={targetWarning?.message}
-                  >
-                    <Input
-                      className="field"
-                      type="datetime-local"
-                      value={draft.countdown.targetAt}
-                      onChange={(event) => patchCountdown("targetAt", event.target.value)}
-                    />
-                  </Field>
-                  <Field
-                    label="开始时间"
-                    hint="用于计算进度条，留空则隐藏进度"
-                    error={startError?.message}
-                  >
-                    <Input
-                      className="field"
-                      type="datetime-local"
-                      aria-invalid={Boolean(startError)}
-                      value={draft.countdown.startAt}
-                      onChange={(event) => patchCountdown("startAt", event.target.value)}
-                    />
-                  </Field>
-                </div>
+                <Field label="结束时间" warning={targetWarning?.message}>
+                  <Input
+                    className="field"
+                    type="datetime-local"
+                    value={draft.countdown.targetAt}
+                    onChange={(event) => patchCountdown("targetAt", event.target.value)}
+                  />
+                </Field>
               </div>
 
               <div className="group">
@@ -495,29 +467,13 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                     />
                   </Field>
                 </div>
-                <Field label="倒计时结束文案" hint="走到 00:00:00 之后显示的内容">
+                <Field label="倒计时结束文案">
                   <Input
                     className="field"
                     value={draft.countdown.finishedText}
                     onChange={(event) => patchCountdown("finishedText", event.target.value)}
                   />
                 </Field>
-              </div>
-
-              <div className="group">
-                <div className="group-title">显示项</div>
-                <ToggleRow
-                  label="进度条"
-                  description="需要填写开始时间才会显示"
-                  checked={draft.countdown.showProgress}
-                  onChange={(value) => patchCountdown("showProgress", value)}
-                />
-                <ToggleRow
-                  label="右上角时钟"
-                  description="现场对时用"
-                  checked={draft.countdown.showClock}
-                  onChange={(value) => patchCountdown("showClock", value)}
-                />
               </div>
             </div>
           </Section>
@@ -549,37 +505,12 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               <div className="group">
                 <div className="group-title">排版</div>
                 <div className="grid-2">
-                  <Field label="显示位置" hint="大屏上的落位">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <ToggleButtonGroup
-                        className="pos-grid"
-                        aria-label="格言落位"
-                        selectionMode="single"
-                        selectedKeys={[draft.motto.position]}
-                        disallowEmptySelection
-                        onSelectionChange={(keys) => {
-                          const next = Array.from(keys as Set<string>)[0];
-                          if (typeof next === "string") patchMotto("position", next as MottoPosition);
-                        }}
-                      >
-                        {MOTTO_POSITIONS.map((position) => (
-                          <ToggleButton
-                            key={position.value}
-                            id={position.value}
-                            className="pos-cell"
-                            aria-label={position.label}
-                          />
-                        ))}
-                      </ToggleButtonGroup>
-                      <div className="vstack gap-2">
-                        <span className="hint">对齐</span>
-                        <Segmented
-                          value={draft.motto.align}
-                          options={ALIGN_OPTIONS}
-                          onChange={(align) => patchMotto("align", align)}
-                        />
-                      </div>
-                    </div>
+                  <Field label="对齐">
+                    <Segmented
+                      value={draft.motto.align}
+                      options={ALIGN_OPTIONS}
+                      onChange={(align) => patchMotto("align", align)}
+                    />
                   </Field>
 
                   <div className="vstack">
@@ -654,7 +585,6 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                     </ToggleButton>
                   ))}
                 </ToggleButtonGroup>
-                <p className="hint mt-2">「切入」逐词从遮罩推上来，另两种为整句滑入。</p>
               </div>
             </div>
           </Section>

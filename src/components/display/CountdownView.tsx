@@ -11,7 +11,6 @@ interface CountdownViewProps {
 
 export function CountdownView({ config, now }: CountdownViewProps) {
   const target = useMemo(() => parseLocal(config.targetAt), [config.targetAt]);
-  const start = useMemo(() => parseLocal(config.startAt), [config.startAt]);
 
   if (!target) {
     return (
@@ -41,13 +40,6 @@ export function CountdownView({ config, now }: CountdownViewProps) {
     { key: "minutes", label: COUNTDOWN_LABELS.minutes, value: digitsOf(remaining.minutes, 2) },
     { key: "seconds", label: COUNTDOWN_LABELS.seconds, value: digitsOf(remaining.seconds, 2) },
   ];
-
-  let percent = 0;
-  if (start && target.getTime() > start.getTime()) {
-    const span = target.getTime() - start.getTime();
-    const elapsed = Math.min(span, Math.max(0, now - start.getTime()));
-    percent = Math.round((elapsed / span) * 100);
-  }
 
   return (
     <>
@@ -81,20 +73,6 @@ export function CountdownView({ config, now }: CountdownViewProps) {
           </Fragment>
         ))}
       </div>
-
-      {config.showProgress ? (
-        <div className="cd-foot">
-          <div className="cd-target">
-            <span>TARGET {formatStamp(target)}</span>
-            <span>{start ? "ELAPSED " + percent + "%" : "SET START TO TRACK"}</span>
-          </div>
-          {start ? (
-            <div className="progress">
-              <div className="progress-fill" style={{ width: percent + "%" }} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </>
   );
 }

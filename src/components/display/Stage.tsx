@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { AppConfig, DisplayMode } from "@/lib/config";
-import { formatClock, nearMilestone, parseLocal } from "@/lib/time";
+import { nearMilestone, parseLocal } from "@/lib/time";
 import { CountdownView } from "./CountdownView";
 import { MottoView } from "./MottoView";
 
@@ -31,7 +31,6 @@ interface ViewSlot {
 export function Stage({ config, serverTime, live = true, modeOverride = null }: StageProps) {
   const [now, setNow] = useState(serverTime);
   const [cfg, setCfg] = useState<AppConfig>(config);
-  const [mounted, setMounted] = useState(false);
   const cfgRef = useRef<AppConfig>(config);
 
   useEffect(() => {
@@ -40,8 +39,6 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
   }, [config]);
 
   useEffect(() => {
-    // 首帧沿用服务端时间保证 SSR 一致，挂载后再切到本机时钟
-    setMounted(true);
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -185,14 +182,6 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
       </div>
 
       <div className="stage-body">
-        <header className="stage-topbar">
-          <div className="flex items-center gap-[1.6em] ml-auto">
-            {cfg.countdown.showClock ? (
-              <span className="stage-clock">{mounted ? formatClock(now) : "--:--:--"}</span>
-            ) : null}
-          </div>
-        </header>
-
         <div className="stage-viewport">
           {leaving ? renderView(leaving, "leave") : renderView(current, "enter")}
         </div>
