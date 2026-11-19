@@ -11,6 +11,7 @@ import {
   NumberField,
   Slider,
   Switch,
+  Tabs,
   TextArea,
   ToggleButton,
   ToggleButtonGroup,
@@ -934,22 +935,28 @@ function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <ToggleButtonGroup
-      className="seg-group"
-      selectionMode="single"
-      selectedKeys={[value]}
-      disallowEmptySelection
-      onSelectionChange={(keys) => {
-        const next = Array.from(keys as Set<string>)[0];
-        if (typeof next === "string") onChange(next as T);
-      }}
+    <Tabs
+      className="seg-tabs"
+      selectedKey={value}
+      onSelectionChange={(key) => onChange(key as T)}
+      aria-label="分段选择"
     >
+      <Tabs.ListContainer>
+        <Tabs.List className="seg-group">
+          {options.map((option) => (
+            <Tabs.Tab key={option.value} id={option.value} className="seg-chip">
+              {option.label}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+      </Tabs.ListContainer>
+      {/* Tabs 需要 Panel 才符合语义；这里只当分段控制器用，面板占位不渲染内容 */}
       {options.map((option) => (
-        <ToggleButton key={option.value} id={option.value} className="seg-chip">
-          {option.label}
-        </ToggleButton>
+        <Tabs.Panel key={option.value} id={option.value} className="hidden">
+          <></>
+        </Tabs.Panel>
       ))}
-    </ToggleButtonGroup>
+    </Tabs>
   );
 }
 

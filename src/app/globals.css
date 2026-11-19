@@ -494,6 +494,13 @@ body {
     radial-gradient(90% 60% at 8% -10%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 62%),
     radial-gradient(70% 50% at 100% 0%, color-mix(in oklab, var(--accent-2) 8%, transparent), transparent 58%),
     #06070c;
+
+  /* 覆盖 HeroUI 派生 token：color-mix 在 :root 定义时会被算成字面值，
+     只改 --accent 不会让这些派生值重新计算，必须在后台作用域里重新派生一次 */
+  --accent-hover: color-mix(in oklab, var(--accent) 88%, white 12%);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --accent-soft-hover: color-mix(in oklab, var(--accent) 24%, transparent);
+  --accent-soft-foreground: color-mix(in oklab, var(--accent) 80%, #eef1ff 20%);
 }
 
 .panel {
@@ -539,6 +546,18 @@ body {
   gap: 6px;
 }
 
+.seg-tabs {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+/* HeroUI Tabs.ListContainer 是外层包装，去掉默认样式 */
+.seg-tabs > .tabs__list-container {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
 .seg-group {
   display: inline-flex;
   width: auto;
@@ -547,6 +566,11 @@ body {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* 分段控制器模式下不渲染 panel 内容，也不占布局 */
+.seg-tabs > .tabs__panel {
+  display: none !important;
 }
 
 .seg-group .seg-chip {
@@ -561,6 +585,13 @@ body {
   cursor: pointer;
   justify-content: center;
   transition: color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+/* 清掉 HeroUI Tabs 给 tab 自带的样式，让我们的 .seg-chip 完全接管 */
+.seg-group .seg-chip::before,
+.seg-group .seg-chip::after,
+.seg-group .tabs__separator {
+  display: none !important;
 }
 
 .seg-group .seg-chip:hover {
@@ -689,6 +720,12 @@ body {
 
 .num-field .number-field__group {
   grid-template-columns: 32px 1fr 32px;
+}
+
+.num-field .number-field__input {
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 @media (max-width: 760px) {
