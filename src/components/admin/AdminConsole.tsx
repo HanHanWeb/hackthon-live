@@ -774,9 +774,7 @@ function ColorInput({
         onChange={commit}
         className="color-field"
       >
-        <ColorField.Group className="color-field-group">
-          <ColorField.Input className="field color-input" />
-        </ColorField.Group>
+        <ColorField.Input className="input field" />
       </ColorField.Root>
     </div>
   );
