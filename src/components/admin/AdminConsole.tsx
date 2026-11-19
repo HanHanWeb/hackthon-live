@@ -17,6 +17,7 @@ import {
   ToggleButtonGroup,
 } from "@heroui/react";
 import {
+  COUNTDOWN_FONTS,
   MOTTO_ANIMATIONS,
   QUOTE_MAX_COUNT,
   type AppConfig,
@@ -443,6 +444,17 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                     type="datetime-local"
                     value={draft.countdown.targetAt}
                     onChange={(event) => patchCountdown("targetAt", event.target.value)}
+                  />
+                </Field>
+              </div>
+
+              <div className="group">
+                <div className="group-title">外观</div>
+                <Field label="数字字体" hint="D-DIN 通过 jsDelivr 加载；JetBrains Mono 是之前使用的本地字体。">
+                  <Segmented
+                    value={draft.countdown.font}
+                    options={COUNTDOWN_FONTS}
+                    onChange={(font) => patchCountdown("font", font)}
                   />
                 </Field>
               </div>

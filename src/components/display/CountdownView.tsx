@@ -44,7 +44,6 @@ export function CountdownView({ config, now }: CountdownViewProps) {
   return (
     <>
       <div className="cd-head">
-        <p className="cd-eyebrow">COUNTDOWN</p>
         <h1 className="cd-title">{config.title}</h1>
         {config.subtitle ? <p className="cd-subtitle">{config.subtitle}</p> : null}
       </div>
@@ -53,7 +52,7 @@ export function CountdownView({ config, now }: CountdownViewProps) {
         {units.map((unit, index) => (
           <Fragment key={unit.key}>
             <div className="cd-unit">
-              <div className="cd-num">
+              <div className="cd-num" data-font={config.font}>
                 {unit.value.split("").map((char, charIndex) => (
                   <span key={charIndex} className="digit-wrap">
                     <span key={char} className="digit">

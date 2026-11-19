@@ -17,6 +17,8 @@ export type MottoAnimation = "from-bottom" | "slide-left" | "slide-right";
 
 export type TextAlign = "left" | "center" | "right";
 
+export type CountdownFont = "din" | "mono";
+
 export interface CountdownConfig {
   /** 主标题，例如 HACKATHON 2026 */
   title: string;
@@ -26,7 +28,14 @@ export interface CountdownConfig {
   targetAt: string;
   /** 倒计时结束后的文案 */
   finishedText: string;
+  /** 倒计时数字字体：D-DIN 或原来的 JetBrains Mono */
+  font: CountdownFont;
 }
+
+export const COUNTDOWN_FONTS: { value: CountdownFont; label: string }[] = [
+  { value: "din", label: "D-DIN" },
+  { value: "mono", label: "JetBrains Mono（原字体）" },
+];
 
 /** 四个单位文案：写死，不开放配置 */
 export const COUNTDOWN_LABELS = {
@@ -106,6 +115,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     subtitle: "48 小时，从零到一",
     targetAt: "2026-11-20T09:00",
     finishedText: "代码已开写 · LET'S BUILD",
+    font: "din",
   },
   motto: {
     quotes: [
@@ -134,6 +144,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 const POSITIONS = new Set(MOTTO_POSITIONS.map((p) => p.value));
 const ANIMATIONS = new Set(MOTTO_ANIMATIONS.map((a) => a.value));
 const MODES = new Set<DisplayMode>(["countdown", "motto", "auto"]);
+const COUNTDOWN_FONT_VALUES = new Set<string>(COUNTDOWN_FONTS.map((font) => font.value));
 
 const str = (value: unknown, fallback: string, max = 4000): string =>
   typeof value === "string" ? value.slice(0, max) : fallback;
@@ -181,6 +192,9 @@ export function normalizeConfig(input: unknown): AppConfig {
       subtitle: str(countdownRaw.subtitle, DEFAULT_CONFIG.countdown.subtitle, 200),
       targetAt: dateLocal(countdownRaw.targetAt, ""),
       finishedText: str(countdownRaw.finishedText, DEFAULT_CONFIG.countdown.finishedText, 200),
+      font: COUNTDOWN_FONT_VALUES.has(countdownRaw.font)
+        ? (countdownRaw.font as CountdownFont)
+        : DEFAULT_CONFIG.countdown.font,
     },
     motto: {
       quotes,

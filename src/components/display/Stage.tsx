@@ -141,11 +141,11 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
   } as CSSProperties;
 
   const renderView = (slot: ViewSlot, role: "enter" | "leave") => {
-    // enter 动画用 LEAVE_MS 之后的延迟由 CSS animation-delay 控制（这里不需要再延时）
+    // key 不包含 role：enter → leave 只切换 CSS 动画，不能重新挂载旧视图并重播内部动画
     const isLeaving = role === "leave";
     return slot.mode === "countdown" ? (
       <main
-        key={`cd-${slot.key}-${role}`}
+        key={`cd-${slot.key}`}
         className="stage-main stage-view"
         data-role={role}
         data-direction={direction}
@@ -155,7 +155,7 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
       </main>
     ) : (
       <div
-        key={`motto-${slot.key}-${role}`}
+        key={`motto-${slot.key}`}
         className="stage-motto-view stage-view"
         data-role={role}
         data-direction={direction}

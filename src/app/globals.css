@@ -1,6 +1,23 @@
 @import "@heroui/styles";
 @source "../../src";
 
+/* Datto D-DIN：jsDelivr 固定 commit，倒计时数字使用。 */
+@font-face {
+  font-family: "D-DIN";
+  src: url("https://cdn.jsdelivr.net/gh/amcchord/datto-d-din@e199c8441e758d6e492cd01ef52c3c67ba4bae26/D-DIN.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "D-DIN";
+  src: url("https://cdn.jsdelivr.net/gh/amcchord/datto-d-din@e199c8441e758d6e492cd01ef52c3c67ba4bae26/D-DIN-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 @theme inline {
   --font-sans: var(--font-space-grotesk), "PingFang SC", "Hiragino Sans GB", "微软雅黑",
     ui-sans-serif, system-ui, sans-serif;
@@ -291,15 +308,7 @@ body {
 .cd-head {
   text-align: center;
   margin-bottom: clamp(18px, 3.4vh, 52px);
-}
-
-.cd-eyebrow {
-  font-family: var(--font-mono);
-  font-size: clamp(10px, 1.1vw, 14px);
-  letter-spacing: 0.42em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--stage-muted) 92%, transparent);
-  margin-bottom: clamp(10px, 1.6vh, 20px);
+  transform: translateY(clamp(-40px, -3vh, -18px));
 }
 
 .cd-title {
@@ -345,6 +354,10 @@ body {
   letter-spacing: -0.05em;
   display: flex;
   align-items: baseline;
+}
+
+.cd-num[data-font="din"] {
+  font-family: "D-DIN", var(--font-mono);
 }
 
 .digit-wrap {
