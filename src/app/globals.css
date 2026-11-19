@@ -938,6 +938,17 @@ textarea.field {
   font-size: 12px;
 }
 
+/* 配色输入框同时挂了 .field 和 HeroUI input，
+   HeroUI 的 status-focused-field 会加自己的 focus ring，
+   与 .field 的 focus box-shadow 叠加成双层圈。
+   这里覆盖掉 HeroUI 的，只保留 .field 的 accent 描边 */
+.color-input:focus,
+.color-input[data-focused="true"],
+.color-input[data-focus-visible="true"] {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent) !important;
+  outline: none !important;
+}
+
 .anim-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
