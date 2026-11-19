@@ -17,6 +17,16 @@ interface StageProps {
 }
 
 const SYNC_INTERVAL = 4000;
+/** 切换过渡时长（ms）：退出动画播完后再卸载旧视图 */
+const TRANSITION_MS = 720;
+
+type RenderedMode = "countdown" | "motto";
+
+interface ViewSlot {
+  mode: RenderedMode;
+  /** 每次进入自增，用于重置 CSS 动画 */
+  key: number;
+}
 
 export function Stage({ config, serverTime, live = true, modeOverride = null }: StageProps) {
   const [now, setNow] = useState(serverTime);
@@ -62,9 +72,9 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
     };
   }, [live]);
 
-  const mode = useMemo(() => {
-    if (modeOverride) return modeOverride;
-    if (cfg.mode === "auto") {
+  const mode = useMemo<RenderedMode>(() => {
+    if (modeOverride && modeOverride !== "auto") return modeOverride;
+    if (cfg.mode === "auto" || modeOverride === "auto") {
       const target = parseLocal(cfg.countdown.targetAt);
       // 整点对齐：只在剩余时间接近整点（如剩余 3 小时）时切到倒计时
       if (cfg.autoAlign && target) {
@@ -87,13 +97,75 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
     modeOverride,
   ]);
 
+  // 当前激活视图 + 退出中的 ghost 视图；通过 key 自增重新触发 CSS 动画
+  const [current, setCurrent] = useState<ViewSlot>({ mode, key: 0 });
+  const [leaving, setLeaving] = useState<ViewSlot | null>(null);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
+  const [sweepKey, setSweepKey] = useState(0);
+  const keyRef = useRef(0);
+  const prevModeRef = useRef<RenderedMode>(mode);
+  const transitionTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (mode === prevModeRef.current) return;
+    const from = prevModeRef.current;
+    prevModeRef.current = mode;
+
+    // 倒计时 → 格言：向下淡出（forward）；格言 → 倒计时：向上淡出（backward）
+    setDirection(from === "countdown" ? "forward" : "backward");
+    setLeaving(current);
+    keyRef.current += 1;
+    setCurrent({ mode, key: keyRef.current });
+    setSweepKey((v) => v + 1);
+
+    if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+    transitionTimer.current = window.setTimeout(() => {
+      setLeaving(null);
+      transitionTimer.current = null;
+    }, TRANSITION_MS);
+
+    return () => {
+      if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+    };
+  }, []);
+
   const themeStyle = {
     "--accent": cfg.theme.accent,
     "--accent-2": cfg.theme.accent2,
   } as CSSProperties;
 
+  const renderView = (slot: ViewSlot, role: "enter" | "leave") =>
+    slot.mode === "countdown" ? (
+      <main
+        key={`cd-${slot.key}-${role}`}
+        className="stage-main stage-view"
+        data-role={role}
+        data-direction={direction}
+        aria-hidden={role === "leave"}
+      >
+        <CountdownView config={cfg.countdown} now={now} />
+      </main>
+    ) : (
+      <div
+        key={`motto-${slot.key}-${role}`}
+        className="stage-motto-view stage-view"
+        data-role={role}
+        data-direction={direction}
+        aria-hidden={role === "leave"}
+      >
+        <MottoView config={cfg.motto} now={now} />
+      </div>
+    );
+
   return (
-    <div className="stage" style={themeStyle} data-mode={mode}>
+    <div className="stage" style={themeStyle} data-mode={mode} data-transition={direction}>
       <div className="stage-layer">
         {cfg.theme.showGrid ? <div className="stage-grid" /> : null}
         {cfg.theme.glow ? (
@@ -105,6 +177,9 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
         {cfg.theme.scanlines ? <div className="stage-layer stage-scanlines" /> : null}
         <div className="stage-layer stage-noise" />
         <div className="stage-layer stage-frame" />
+        {leaving ? (
+          <div key={sweepKey} className="stage-sweep" data-direction={direction} aria-hidden="true" />
+        ) : null}
       </div>
 
       <div className="stage-body">
@@ -116,17 +191,11 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
           </div>
         </header>
 
-        {mode === "countdown" ? (
-          <main className="stage-main">
-            <CountdownView config={cfg.countdown} now={now} />
-          </main>
-        ) : (
-          <div className="stage-main" aria-hidden="true" />
-        )}
-
+        <div className="stage-viewport">
+          {leaving ? renderView(leaving, "leave") : null}
+          {renderView(current, "enter")}
+        </div>
       </div>
-
-      {mode === "motto" ? <MottoView config={cfg.motto} now={now} /> : null}
     </div>
   );
 }

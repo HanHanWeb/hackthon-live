@@ -214,6 +214,195 @@ body {
   padding: clamp(12px, 2vh, 32px) 0;
 }
 
+/* ---------------------------------------------------------------- mode transition
+   倒计时 ↔ 格言 切换：
+   - 旧视图沿方向轴淡出 + 缩放 + 模糊（"穿过"的感觉）
+   - 新视图从反方向淡入 + 反向缩放
+   - 切换瞬间一道扫光强调（accent → accent-2 渐变）
+----------------------------------------------------------------------------- */
+
+.stage-viewport {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.stage-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, opacity, filter;
+}
+
+/* 让 motto 的绝对定位层在 viewport 内正确铺开 */
+.stage-motto-view {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-motto-view .motto-layer {
+  position: absolute;
+  inset: 0;
+}
+
+/* 进入动画：从方向轴远端推入 + 微缩放 + 去模糊 */
+.stage-view[data-role="enter"][data-direction="forward"] {
+  animation: view-enter-forward 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stage-view[data-role="enter"][data-direction="backward"] {
+  animation: view-enter-backward 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 退出动画：沿方向轴推出 + 缩小 + 模糊 */
+.stage-view[data-role="leave"][data-direction="forward"] {
+  animation: view-leave-forward 720ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.stage-view[data-role="leave"][data-direction="backward"] {
+  animation: view-leave-backward 720ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* forward: 倒计时 → 格言（旧向上推出、新从下方进入） */
+@keyframes view-leave-forward {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -6vh, 0) scale(0.92);
+    filter: blur(14px);
+  }
+}
+
+@keyframes view-enter-forward {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 7vh, 0) scale(1.06);
+    filter: blur(18px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* backward: 格言 → 倒计时（旧向下坠落、新从上方坠入） */
+@keyframes view-leave-backward {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 6vh, 0) scale(0.94);
+    filter: blur(14px);
+  }
+}
+
+@keyframes view-enter-backward {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -7vh, 0) scale(1.08);
+    filter: blur(18px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* 扫光：一道斜向 accent 渐变光带，从屏外扫过 */
+.stage-sweep {
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  left: -40%;
+  width: 60%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in oklab, var(--accent) 22%, transparent) 35%,
+    color-mix(in oklab, var(--accent-2) 36%, transparent) 50%,
+    color-mix(in oklab, var(--accent) 22%, transparent) 65%,
+    transparent 100%
+  );
+  filter: blur(32px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 3;
+  animation: sweep-across 720ms cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+.stage-sweep[data-direction="backward"] {
+  animation-name: sweep-across-reverse;
+}
+
+@keyframes sweep-across {
+  0% {
+    transform: translate3d(0, 0, 0) skewX(-12deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate3d(280%, 0, 0) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes sweep-across-reverse {
+  0% {
+    transform: translate3d(280%, 0, 0) skewX(-12deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-view[data-role="enter"],
+  .stage-view[data-role="leave"] {
+    animation-duration: 1ms !important;
+  }
+  .stage-sweep {
+    display: none;
+  }
+}
+
 /* ---------------------------------------------------------------- countdown */
 
 .cd-head {
@@ -714,18 +903,33 @@ body {
 }
 
 .num-field {
-  width: 116px;
+  width: 132px;
   flex: none;
 }
 
+/* HeroUI 按钮固定 w-10 (40px)，grid 必须配套 40px，否则加号会被推出格子 */
 .num-field .number-field__group {
-  grid-template-columns: 32px 1fr 32px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+}
+
+/* 强制覆盖 :has() 的高优先级规则 */
+.num-field .number-field__group:has([slot="decrement"]),
+.num-field .number-field__group:has([slot="increment"]),
+.num-field .number-field__group:has([slot="decrement"]):has([slot="increment"]) {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
 }
 
 .num-field .number-field__input {
   text-align: center;
   padding-left: 0;
   padding-right: 0;
+}
+
+/* 按钮符号居中且不受 scale transform 影响位置 */
+.num-field .number-field__increment-button,
+.num-field .number-field__decrement-button {
+  width: 40px;
+  padding: 0;
 }
 
 @media (max-width: 760px) {
@@ -846,6 +1050,16 @@ textarea.field {
   font-weight: 600;
   letter-spacing: 0.01em;
   text-align: left;
+}
+
+.section-title::before {
+  content: "#";
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--accent);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  text-shadow: 0 0 12px color-mix(in oklab, var(--accent) 55%, transparent);
 }
 
 .section-sub {
@@ -1211,8 +1425,13 @@ textarea.field {
   padding: 9px 16px;
   border-radius: 999px;
   font-size: 12.5px;
+  font-family: var(--font-sans);
   white-space: nowrap;
   backdrop-filter: blur(12px);
+  background: rgba(19, 22, 33, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #eef1ff;
+  box-shadow: 0 12px 40px -16px rgba(0, 0, 0, 0.7);
   animation: toast-in 220ms ease-out;
 }
 
