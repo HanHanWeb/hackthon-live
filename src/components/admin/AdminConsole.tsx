@@ -764,7 +764,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
 
       <div className="toast-region" role="status" aria-live="polite">
         {toast ? (
-          <div className="toast" data-tone={toast.tone}>
+          <div className="app-toast" data-tone={toast.tone}>
             {toast.text}
           </div>
         ) : null}
