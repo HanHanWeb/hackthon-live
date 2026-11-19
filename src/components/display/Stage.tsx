@@ -17,8 +17,8 @@ interface StageProps {
 }
 
 const SYNC_INTERVAL = 4000;
-/** 切换过渡时长（ms）：退出动画播完后再卸载旧视图 */
-const TRANSITION_MS = 720;
+/** 退出动画时长（ms）：旧视图完全淡出后才进入新视图，须与 CSS leave 动画一致 */
+const LEAVE_MS = 360;
 
 type RenderedMode = "countdown" | "motto";
 
@@ -97,42 +97,44 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
     modeOverride,
   ]);
 
-  // 当前激活视图 + 退出中的 ghost 视图；通过 key 自增重新触发 CSS 动画
+  // 串行转场：旧视图先完全退出，新视图再开始淡入
+  // current: 当前显示的视图（含正在 enter 的）
+  // leaving: 非 null 表示正处于"旧视图退出中"阶段，此时不渲染新视图
   const [current, setCurrent] = useState<ViewSlot>({ mode, key: 0 });
   const [leaving, setLeaving] = useState<ViewSlot | null>(null);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
-  const [sweepKey, setSweepKey] = useState(0);
   const keyRef = useRef(0);
   const prevModeRef = useRef<RenderedMode>(mode);
-  const transitionTimer = useRef<number | null>(null);
+  const leaveTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (mode === prevModeRef.current) return;
     const from = prevModeRef.current;
     prevModeRef.current = mode;
 
-    // 倒计时 → 格言：向下淡出（forward）；格言 → 倒计时：向上淡出（backward）
     setDirection(from === "countdown" ? "forward" : "backward");
-    setLeaving(current);
-    keyRef.current += 1;
-    setCurrent({ mode, key: keyRef.current });
-    setSweepKey((v) => v + 1);
 
-    if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
-    transitionTimer.current = window.setTimeout(() => {
+    // 阶段 1：把当前视图标记为 leaving，开始播退出动画
+    setLeaving(current);
+
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
+    leaveTimer.current = window.setTimeout(() => {
+      // 阶段 2：退出动画播完，卸载旧视图，挂载新视图进入动画
+      keyRef.current += 1;
+      setCurrent({ mode, key: keyRef.current });
       setLeaving(null);
-      transitionTimer.current = null;
-    }, TRANSITION_MS);
+      leaveTimer.current = null;
+    }, LEAVE_MS);
 
     return () => {
-      if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+      if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   useEffect(() => {
     return () => {
-      if (transitionTimer.current) window.clearTimeout(transitionTimer.current);
+      if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
     };
   }, []);
 
@@ -141,14 +143,16 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
     "--accent-2": cfg.theme.accent2,
   } as CSSProperties;
 
-  const renderView = (slot: ViewSlot, role: "enter" | "leave") =>
-    slot.mode === "countdown" ? (
+  const renderView = (slot: ViewSlot, role: "enter" | "leave") => {
+    // enter 动画用 LEAVE_MS 之后的延迟由 CSS animation-delay 控制（这里不需要再延时）
+    const isLeaving = role === "leave";
+    return slot.mode === "countdown" ? (
       <main
         key={`cd-${slot.key}-${role}`}
         className="stage-main stage-view"
         data-role={role}
         data-direction={direction}
-        aria-hidden={role === "leave"}
+        aria-hidden={isLeaving}
       >
         <CountdownView config={cfg.countdown} now={now} />
       </main>
@@ -158,11 +162,12 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
         className="stage-motto-view stage-view"
         data-role={role}
         data-direction={direction}
-        aria-hidden={role === "leave"}
+        aria-hidden={isLeaving}
       >
         <MottoView config={cfg.motto} now={now} />
       </div>
     );
+  };
 
   return (
     <div className="stage" style={themeStyle} data-mode={mode} data-transition={direction}>
@@ -177,9 +182,6 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
         {cfg.theme.scanlines ? <div className="stage-layer stage-scanlines" /> : null}
         <div className="stage-layer stage-noise" />
         <div className="stage-layer stage-frame" />
-        {leaving ? (
-          <div key={sweepKey} className="stage-sweep" data-direction={direction} aria-hidden="true" />
-        ) : null}
       </div>
 
       <div className="stage-body">
@@ -192,8 +194,7 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
         </header>
 
         <div className="stage-viewport">
-          {leaving ? renderView(leaving, "leave") : null}
-          {renderView(current, "enter")}
+          {leaving ? renderView(leaving, "leave") : renderView(current, "enter")}
         </div>
       </div>
     </div>
