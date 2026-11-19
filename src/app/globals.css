@@ -1306,16 +1306,14 @@ textarea.field {
   left: 0;
   right: 0;
   z-index: 60;
-  display: flex;
-  justify-content: center;
   pointer-events: none;
 }
 
 .toast {
-  /* flex item 默认 stretch，必须收回，否则会被拉成 region 全宽 */
-  align-self: flex-start;
-  flex: 0 0 auto;
+  /* 块级 + fit-content + margin auto 是最稳的居中组合，不依赖 flex，
+     也不会被 keyframes 里的 transform 干扰定位 */
   width: fit-content;
+  margin: 0 auto;
   padding: 10px 18px;
   border-radius: 999px;
   font-size: 12.5px;
