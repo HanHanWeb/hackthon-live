@@ -48,6 +48,12 @@ export const COUNTDOWN_LABELS = {
 /** 格言上限：后台每行一句，最多 50 句、单句 400 字 */
 export const QUOTE_MAX_COUNT = 50;
 export const QUOTE_MAX_CHARS = 400;
+export const TEXT_LIMITS = {
+  title: 120,
+  subtitle: 200,
+  finishedText: 200,
+  author: 60,
+} as const;
 
 export interface MottoConfig {
   quotes: string[];
@@ -165,6 +171,42 @@ const color = (value: unknown, fallback: string): string =>
 const dateLocal = (value: unknown, fallback: string): string =>
   typeof value === "string" && parseLocal(value) !== null ? value : fallback;
 
+export interface ConfigIssue {
+  field: "countdown.title" | "countdown.subtitle" | "countdown.finishedText" | "motto.quotes" | "motto.author";
+  message: string;
+}
+
+/** 保存前显式校验会被 normalizeConfig 截断的内容，避免用户以为原文已保存。 */
+export function validateConfigInput(input: unknown): ConfigIssue[] {
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const countdown = (raw.countdown && typeof raw.countdown === "object" ? raw.countdown : {}) as Record<string, unknown>;
+  const motto = (raw.motto && typeof raw.motto === "object" ? raw.motto : {}) as Record<string, unknown>;
+  const issues: ConfigIssue[] = [];
+  const checkLength = (value: unknown, limit: number, field: ConfigIssue["field"], label: string) => {
+    if (typeof value === "string" && value.length > limit) {
+      issues.push({ field, message: `${label}不能超过 ${limit} 字，当前 ${value.length} 字。` });
+    }
+  };
+
+  checkLength(countdown.title, TEXT_LIMITS.title, "countdown.title", "主标题");
+  checkLength(countdown.subtitle, TEXT_LIMITS.subtitle, "countdown.subtitle", "副标题");
+  checkLength(countdown.finishedText, TEXT_LIMITS.finishedText, "countdown.finishedText", "倒计时结束文案");
+  checkLength(motto.author, TEXT_LIMITS.author, "motto.author", "署名");
+
+  if (Array.isArray(motto.quotes)) {
+    const nonEmptyQuotes = motto.quotes.filter((quote) => typeof quote === "string" && quote.trim().length > 0);
+    if (nonEmptyQuotes.length > QUOTE_MAX_COUNT) {
+      issues.push({ field: "motto.quotes", message: `格言最多 ${QUOTE_MAX_COUNT} 句，当前 ${nonEmptyQuotes.length} 句。` });
+    }
+    const longQuoteIndex = motto.quotes.findIndex((quote) => typeof quote === "string" && quote.length > QUOTE_MAX_CHARS);
+    if (longQuoteIndex >= 0) {
+      issues.push({ field: "motto.quotes", message: `第 ${longQuoteIndex + 1} 行格言不能超过 ${QUOTE_MAX_CHARS} 字。` });
+    }
+  }
+
+  return issues;
+}
+
 /** 把任意输入收敛成一份合法的配置，永远不抛错 */
 export function normalizeConfig(input: unknown): AppConfig {
   const raw = (input && typeof input === "object" ? input : {}) as Record<string, any>;
@@ -188,10 +230,10 @@ export function normalizeConfig(input: unknown): AppConfig {
     autoLeadSeconds: num(raw.autoLeadSeconds, DEFAULT_CONFIG.autoLeadSeconds, 0, 600),
     autoHoldSeconds: num(raw.autoHoldSeconds, DEFAULT_CONFIG.autoHoldSeconds, 0, 600),
     countdown: {
-      title: str(countdownRaw.title, DEFAULT_CONFIG.countdown.title, 120),
-      subtitle: str(countdownRaw.subtitle, DEFAULT_CONFIG.countdown.subtitle, 200),
+      title: str(countdownRaw.title, DEFAULT_CONFIG.countdown.title, TEXT_LIMITS.title),
+      subtitle: str(countdownRaw.subtitle, DEFAULT_CONFIG.countdown.subtitle, TEXT_LIMITS.subtitle),
       targetAt: dateLocal(countdownRaw.targetAt, ""),
-      finishedText: str(countdownRaw.finishedText, DEFAULT_CONFIG.countdown.finishedText, 200),
+      finishedText: str(countdownRaw.finishedText, DEFAULT_CONFIG.countdown.finishedText, TEXT_LIMITS.finishedText),
       font: COUNTDOWN_FONT_VALUES.has(countdownRaw.font)
         ? (countdownRaw.font as CountdownFont)
         : DEFAULT_CONFIG.countdown.font,
@@ -203,7 +245,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       fontSize: num(mottoRaw.fontSize, DEFAULT_CONFIG.motto.fontSize, 24, 160),
       animation: ANIMATIONS.has(mottoRaw.animation) ? (mottoRaw.animation as MottoAnimation) : DEFAULT_CONFIG.motto.animation,
       rotateSeconds: num(mottoRaw.rotateSeconds, DEFAULT_CONFIG.motto.rotateSeconds, 0, 600),
-      author: str(mottoRaw.author, DEFAULT_CONFIG.motto.author, 60),
+      author: str(mottoRaw.author, DEFAULT_CONFIG.motto.author, TEXT_LIMITS.author),
     },
     theme: {
       accent: color(themeRaw.accent, DEFAULT_CONFIG.theme.accent),

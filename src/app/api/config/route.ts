@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { validateConfigInput } from "@/lib/config";
 import { getConfig, saveConfig } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -6,8 +7,12 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store, max-age=0" };
 
 export async function GET() {
-  const config = await getConfig();
-  return NextResponse.json(config, { headers: NO_STORE });
+  try {
+    const config = await getConfig();
+    return NextResponse.json(config, { headers: NO_STORE });
+  } catch {
+    return NextResponse.json({ error: "读取配置失败，请检查配置文件和目录权限" }, { status: 500, headers: NO_STORE });
+  }
 }
 
 const MAX_BODY_LENGTH = 256 * 1024;
@@ -22,6 +27,11 @@ export async function POST(request: Request) {
     payload = JSON.parse(body);
   } catch {
     return NextResponse.json({ error: "请求体不是合法的 JSON" }, { status: 400, headers: NO_STORE });
+  }
+
+  const issues = validateConfigInput(payload);
+  if (issues.length > 0) {
+    return NextResponse.json({ error: "配置校验失败，请修正后再保存", issues }, { status: 422, headers: NO_STORE });
   }
 
   try {

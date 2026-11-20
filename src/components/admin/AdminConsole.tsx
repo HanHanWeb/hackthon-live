@@ -20,6 +20,8 @@ import {
   COUNTDOWN_FONTS,
   MOTTO_ANIMATIONS,
   QUOTE_MAX_COUNT,
+  TEXT_LIMITS,
+  validateConfigInput,
   type AppConfig,
   type CountdownConfig,
   type DisplayMode,
@@ -44,9 +46,6 @@ const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
   { value: "right", label: "右对齐" },
 ];
 
-const TITLE_MAX = 120;
-const SUBTITLE_MAX = 200;
-
 const serialize = (value: unknown) => JSON.stringify(value);
 
 interface AdminConsoleProps {
@@ -61,6 +60,8 @@ interface ToastState {
 export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   const [saved, setSaved] = useState<AppConfig>(initialConfig);
   const [draft, setDraft] = useState<AppConfig>(initialConfig);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [quotesText, setQuotesText] = useState(initialConfig.motto.quotes.join("\n"));
   const [saving, setSaving] = useState(false);
   // 首帧留空，挂载后再格式化，避免服务端 / 浏览器时区不同导致 hydration 不一致
@@ -94,7 +95,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   );
 
   const issues = useMemo(() => {
-    const errors: { field: "startAt" | "targetAt"; message: string }[] = [];
+    const errors = validateConfigInput(draft);
     const warnings: { field: "startAt" | "targetAt"; message: string }[] = [];
     const target = parseLocal(draft.countdown.targetAt);
 
@@ -106,7 +107,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
     }
 
     return { errors, warnings };
-  }, [draft.countdown.targetAt]);
+  }, [draft]);
 
   const showToast = useCallback((text: string, tone: ToastState["tone"]) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -159,12 +160,13 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
     // 没有改动、或上一次保存还没回来时直接忽略（Ctrl+S 会频繁触发）
     if (!dirty || savingRef.current) return;
     if (issues.errors.length > 0) {
-      setError("时间设置有误，先修正再发布。");
-      showToast("时间设置有误，先修正再发布", "error");
+      setError("配置校验失败，请先修正再发布。");
+      showToast("配置校验失败，请先修正再发布", "error");
       alertRef.current?.focus();
       return;
     }
 
+    const submittedDraft = draft;
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -172,14 +174,20 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
       const response = await fetch("/api/config", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(submittedDraft),
       });
-      if (!response.ok) throw new Error("保存失败（HTTP " + response.status + "）");
+      if (!response.ok) {
+        const problem = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(problem?.error ?? "保存失败（HTTP " + response.status + "）");
+      }
       const next = (await response.json()) as AppConfig;
+      const preserveCurrentDraft = draftRef.current !== submittedDraft;
       setSaved(next);
-      setDraft(next);
-      setQuotesText(next.motto.quotes.join("\n"));
-      showToast("已保存", "ok");
+      if (!preserveCurrentDraft) {
+        setDraft(next);
+        setQuotesText(next.motto.quotes.join("\n"));
+      }
+      showToast(preserveCurrentDraft ? "已保存；保存期间的新编辑已保留" : "已保存", "ok");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "保存失败";
       setError(message);
@@ -280,6 +288,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
         : "整屏固定显示格言，适合暖场与休息时间。";
 
   const targetWarning = issues.warnings.find((issue) => issue.field === "targetAt");
+  const fieldError = (field: string) => issues.errors.find((issue) => issue.field === field)?.message;
   const blocked = issues.errors.length > 0;
 
   const adminTheme = {
@@ -334,9 +343,13 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
             <div className="error-summary" role="alert" tabIndex={-1} ref={alertRef}>
               <div className="error-summary-title">有 {issues.errors.length} 处设置需要先修正</div>
               <ul>
-                {issues.errors.map((issue) => (
-                  <li key={issue.field}>
-                    <button type="button" className="error-link" onClick={() => gotoSection("countdown")}>
+                {issues.errors.map((issue, index) => (
+                  <li key={`${issue.field}-${index}`}>
+                    <button
+                      type="button"
+                      className="error-link"
+                      onClick={() => gotoSection(issue.field.startsWith("motto.") ? "motto" : "countdown")}
+                    >
                       {issue.message}
                     </button>
                   </li>
@@ -462,7 +475,11 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               <div className="group">
                 <div className="group-title">文案</div>
                 <div className="grid-2">
-                  <Field label="主标题" count={draft.countdown.title.length + "/" + TITLE_MAX}>
+                  <Field
+                    label="主标题"
+                    count={draft.countdown.title.length + "/" + TEXT_LIMITS.title}
+                    error={fieldError("countdown.title")}
+                  >
                     <Input
                       className="field"
                       value={draft.countdown.title}
@@ -470,7 +487,11 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                       onChange={(event) => patchCountdown("title", event.target.value)}
                     />
                   </Field>
-                  <Field label="副标题" count={draft.countdown.subtitle.length + "/" + SUBTITLE_MAX}>
+                  <Field
+                    label="副标题"
+                    count={draft.countdown.subtitle.length + "/" + TEXT_LIMITS.subtitle}
+                    error={fieldError("countdown.subtitle")}
+                  >
                     <Input
                       className="field"
                       value={draft.countdown.subtitle}
@@ -479,7 +500,11 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                     />
                   </Field>
                 </div>
-                <Field label="倒计时结束文案">
+                <Field
+                  label="倒计时结束文案"
+                  count={draft.countdown.finishedText.length + "/" + TEXT_LIMITS.finishedText}
+                  error={fieldError("countdown.finishedText")}
+                >
                   <Input
                     className="field"
                     value={draft.countdown.finishedText}
@@ -502,8 +527,9 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                 <div className="group-title">内容</div>
                 <Field
                   label="格言内容"
-                  hint={"每行一句，按顺序轮换；最多 " + QUOTE_MAX_COUNT + " 句"}
+                  hint={"每行一句，按顺序轮换；每句不超过 400 字，最多 " + QUOTE_MAX_COUNT + " 句"}
                   count={draft.motto.quotes.length + " 句"}
+                  error={fieldError("motto.quotes")}
                 >
                   <TextArea
                     className="field"
@@ -558,7 +584,11 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                           <span className="unit">秒</span>
                         </div>
                       </Field>
-                      <Field label="署名（可选）">
+                      <Field
+                        label="署名（可选）"
+                        count={draft.motto.author.length + "/" + TEXT_LIMITS.author}
+                        error={fieldError("motto.author")}
+                      >
                         <Input
                           className="field"
                           value={draft.motto.author}

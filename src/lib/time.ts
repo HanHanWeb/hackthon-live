@@ -62,11 +62,9 @@ export function diffDuration(targetMs: number, nowMs: number): Duration {
   };
 }
 
-/** 整点里程碑（剩余秒数），从大到小 */
-const MILESTONES_SECONDS: number[] = (() => {
-  const list = new Set<number>();
-  for (let hour = 1; hour <= 48; hour += 1) list.add(hour * 3600);
-  [1800, 1200, 600, 300, 180, 120, 60].forEach((second) => list.add(second));
+/** 一小时内的补充里程碑（剩余秒数），从大到小；整小时由 nearMilestone 动态计算。 */
+const SUB_HOUR_MILESTONES_SECONDS: number[] = (() => {
+  const list = new Set<number>([1800, 1200, 600, 300, 180, 120, 60]);
   for (let minute = 9; minute >= 1; minute -= 1) list.add(minute * 60);
   return [...list].sort((a, b) => b - a);
 })();
@@ -81,7 +79,11 @@ export function nearMilestone(remainingMs: number, leadSeconds: number, holdSeco
   const remaining = remainingMs / 1000;
   const lead = Math.max(0, leadSeconds);
   const hold = Math.max(0, holdSeconds);
-  for (const milestone of MILESTONES_SECONDS) {
+  const inWindow = (milestone: number) => remaining >= milestone - hold && remaining <= milestone + lead;
+  // 不限制 48 小时：找到距离当前剩余时间最近的整小时即可。
+  const nearestHour = Math.max(3600, Math.round(remaining / 3600) * 3600);
+  if (inWindow(nearestHour)) return true;
+  for (const milestone of SUB_HOUR_MILESTONES_SECONDS) {
     if (remaining > milestone + lead) break;
     if (remaining >= milestone - hold) return true;
   }

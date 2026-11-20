@@ -47,25 +47,36 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
   useEffect(() => {
     if (!live) return;
     let stopped = false;
+    let timer: number | null = null;
 
+    const schedule = () => {
+      if (!stopped) timer = window.setTimeout(() => void sync(), SYNC_INTERVAL);
+    };
     const sync = async () => {
       try {
         const response = await fetch("/api/config", { cache: "no-store" });
-        if (!response.ok || stopped) return;
+        if (!response.ok) return;
         const next = (await response.json()) as AppConfig;
-        if (next.revision !== cfgRef.current.revision) {
+        if (stopped) return;
+        const current = cfgRef.current;
+        const changed = JSON.stringify(next) !== JSON.stringify(current);
+        // 请求串行执行，拒绝低版本响应；同 revision 的内容变化来自手动编辑，也应同步。
+        if (next.revision >= current.revision && changed) {
           cfgRef.current = next;
           setCfg(next);
         }
       } catch {
         // 网络抖动时静默重试
+      } finally {
+        // 上一次请求结束后再计时，任何网络时延下都不会重叠。
+        schedule();
       }
     };
 
-    const timer = window.setInterval(() => void sync(), SYNC_INTERVAL);
+    schedule();
     return () => {
       stopped = true;
-      window.clearInterval(timer);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [live]);
 

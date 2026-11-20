@@ -5,20 +5,27 @@ import { DEFAULT_CONFIG, normalizeConfig, type AppConfig } from "./config";
 const DATA_DIR = path.join(process.cwd(), "data");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 
-let cache: AppConfig | null = null;
-let cacheMtime = 0;
+let lastKnownGood: AppConfig | null = null;
+
+const defaultConfig = () => JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as AppConfig;
 
 async function readFromDisk(): Promise<AppConfig> {
   try {
-    const [raw, stat] = await Promise.all([fs.readFile(CONFIG_FILE, "utf8"), fs.stat(CONFIG_FILE)]);
-    if (cache && stat.mtimeMs === cacheMtime) return cache;
+    // 文件很小，每次完整读取可避免 readFile/stat 分离造成的缓存判断竞态，也能识别手改配置。
+    const raw = await fs.readFile(CONFIG_FILE, "utf8");
     const parsed = normalizeConfig(JSON.parse(raw));
-    cache = parsed;
-    cacheMtime = stat.mtimeMs;
+    lastKnownGood = parsed;
     return parsed;
-  } catch {
-    // 深拷贝，避免调用方原地修改污染模块级默认值
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as AppConfig;
+  } catch (cause) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      // 首次启动允许没有配置文件；已有配置被移动或删除时不丢掉最近的可用状态。
+      return lastKnownGood ?? defaultConfig();
+    }
+    console.error(`[store] 读取配置失败，${lastKnownGood ? "使用最近一次可用配置" : "没有可用缓存"}`, cause);
+    if (lastKnownGood) return lastKnownGood;
+    // JSON 损坏、权限不足等故障不能伪装成默认配置；保存也会因此中止，保留原文件。
+    throw cause;
   }
 }
 
@@ -38,8 +45,7 @@ async function writeConfig(input: unknown): Promise<AppConfig> {
   const tmp = CONFIG_FILE + ".tmp";
   await fs.writeFile(tmp, JSON.stringify(saved, null, 2) + "\n", "utf8");
   await fs.rename(tmp, CONFIG_FILE);
-  cache = saved;
-  cacheMtime = (await fs.stat(CONFIG_FILE)).mtimeMs;
+  lastKnownGood = saved;
   return saved;
 }
 
