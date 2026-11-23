@@ -18,10 +18,27 @@ export async function GET() {
 const MAX_BODY_LENGTH = 256 * 1024;
 
 export async function POST(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return NextResponse.json({ error: "仅接受 application/json 请求" }, { status: 415, headers: NO_STORE });
+  }
+
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (origin && host) {
+    try {
+      if (new URL(origin).host !== host) {
+        return NextResponse.json({ error: "拒绝跨站写入请求" }, { status: 403, headers: NO_STORE });
+      }
+    } catch {
+      return NextResponse.json({ error: "非法请求来源" }, { status: 403, headers: NO_STORE });
+    }
+  }
+
   let payload: unknown;
   try {
     const body = await request.text();
-    if (body.length > MAX_BODY_LENGTH) {
+    if (Buffer.byteLength(body, "utf8") > MAX_BODY_LENGTH) {
       return NextResponse.json({ error: "配置体积过大" }, { status: 413, headers: NO_STORE });
     }
     payload = JSON.parse(body);

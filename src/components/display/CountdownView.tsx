@@ -6,7 +6,7 @@ import { diffDuration, digitsOf, formatStamp, parseLocal } from "@/lib/time";
 
 interface CountdownViewProps {
   config: CountdownConfig;
-  now: number;
+  now: number | null;
 }
 
 export function CountdownView({ config, now }: CountdownViewProps) {
@@ -21,8 +21,8 @@ export function CountdownView({ config, now }: CountdownViewProps) {
     );
   }
 
-  const remaining = diffDuration(target.getTime(), now);
-  const finished = remaining.totalMs <= 0;
+  const remaining = now === null ? null : diffDuration(target.getTime(), now);
+  const finished = remaining !== null && remaining.totalMs <= 0;
 
   if (finished) {
     return (
@@ -35,10 +35,10 @@ export function CountdownView({ config, now }: CountdownViewProps) {
   }
 
   const units = [
-    { key: "days", label: COUNTDOWN_LABELS.days, value: digitsOf(remaining.days, 2) },
-    { key: "hours", label: COUNTDOWN_LABELS.hours, value: digitsOf(remaining.hours, 2) },
-    { key: "minutes", label: COUNTDOWN_LABELS.minutes, value: digitsOf(remaining.minutes, 2) },
-    { key: "seconds", label: COUNTDOWN_LABELS.seconds, value: digitsOf(remaining.seconds, 2) },
+    { key: "days", label: COUNTDOWN_LABELS.days, value: remaining ? digitsOf(remaining.days, 2) : "00" },
+    { key: "hours", label: COUNTDOWN_LABELS.hours, value: remaining ? digitsOf(remaining.hours, 2) : "00" },
+    { key: "minutes", label: COUNTDOWN_LABELS.minutes, value: remaining ? digitsOf(remaining.minutes, 2) : "00" },
+    { key: "seconds", label: COUNTDOWN_LABELS.seconds, value: remaining ? digitsOf(remaining.seconds, 2) : "00" },
   ];
 
   return (
@@ -48,7 +48,7 @@ export function CountdownView({ config, now }: CountdownViewProps) {
         {config.subtitle ? <p className="cd-subtitle">{config.subtitle}</p> : null}
       </div>
 
-      <div className="cd-row" role="timer" aria-live="off">
+      <div className="cd-row" role="timer" aria-live="off" style={remaining === null ? { opacity: 0 } : undefined}>
         {units.map((unit, index) => (
           <Fragment key={unit.key}>
             <div className="cd-unit">

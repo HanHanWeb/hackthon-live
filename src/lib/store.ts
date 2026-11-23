@@ -33,18 +33,47 @@ export async function getConfig(): Promise<AppConfig> {
   return readFromDisk();
 }
 
+const RETRYABLE_RENAME_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+async function renameWithRetry(from: string, to: string, maxAttempts = 4): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if (!code || !RETRYABLE_RENAME_CODES.has(code) || attempt === maxAttempts) {
+        throw cause;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
+  }
+}
+
 async function writeConfig(input: unknown): Promise<AppConfig> {
-  const current = await getConfig();
+  let currentRevision = lastKnownGood?.revision ?? 0;
+  try {
+    const current = await getConfig();
+    currentRevision = Math.max(currentRevision, current.revision);
+  } catch {
+    // 磁盘配置文件已损坏时允许用新的合法配置覆盖修复
+  }
+
   const next = normalizeConfig(input);
   const saved: AppConfig = {
     ...next,
-    revision: Math.max(current.revision + 1, next.revision),
+    revision: Math.max(currentRevision + 1, next.revision),
     updatedAt: new Date().toISOString(),
   };
   await fs.mkdir(DATA_DIR, { recursive: true });
-  const tmp = CONFIG_FILE + ".tmp";
-  await fs.writeFile(tmp, JSON.stringify(saved, null, 2) + "\n", "utf8");
-  await fs.rename(tmp, CONFIG_FILE);
+  const tmp = `${CONFIG_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(saved, null, 2) + "\n", "utf8");
+    await renameWithRetry(tmp, CONFIG_FILE);
+  } catch (cause) {
+    await fs.unlink(tmp).catch(() => undefined);
+    throw cause;
+  }
   lastKnownGood = saved;
   return saved;
 }

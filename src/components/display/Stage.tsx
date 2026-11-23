@@ -9,11 +9,12 @@ import { MottoView } from "./MottoView";
 
 interface StageProps {
   config: AppConfig;
-  serverTime: number;
   /** 是否轮询 /api/config 保持与后台同步 */
   live?: boolean;
   /** 现场临时强制切换形态（不写回配置） */
   modeOverride?: DisplayMode | null;
+  /** 预览重播计数器：自增时直接重播当前视图动画，无需销毁重载 iframe */
+  replayNonce?: number;
 }
 
 const SYNC_INTERVAL = 4000;
@@ -28,8 +29,9 @@ interface ViewSlot {
   key: number;
 }
 
-export function Stage({ config, serverTime, live = true, modeOverride = null }: StageProps) {
-  const [now, setNow] = useState(serverTime);
+export function Stage({ config, live = true, modeOverride = null, replayNonce = 0 }: StageProps) {
+  // 首帧置 null，挂载后再取客户端时间，避免服务端与大屏浏览器时区不同触发 Hydration 报错
+  const [now, setNow] = useState<number | null>(null);
   const [cfg, setCfg] = useState<AppConfig>(config);
   const cfgRef = useRef<AppConfig>(config);
 
@@ -37,12 +39,6 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
     setCfg(config);
     cfgRef.current = config;
   }, [config]);
-
-  useEffect(() => {
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (!live) return;
@@ -83,6 +79,7 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
   const mode = useMemo<RenderedMode>(() => {
     if (modeOverride && modeOverride !== "auto") return modeOverride;
     if (cfg.mode === "auto" || modeOverride === "auto") {
+      if (now === null) return "countdown";
       const target = parseLocal(cfg.countdown.targetAt);
       // 整点对齐：只在剩余时间接近整点（如剩余 3 小时）时切到倒计时
       if (cfg.autoAlign && target) {
@@ -105,46 +102,63 @@ export function Stage({ config, serverTime, live = true, modeOverride = null }: 
     modeOverride,
   ]);
 
-  // 串行转场：旧视图先完全退出，新视图再开始淡入
-  // current: 当前显示的视图（含正在 enter 的）
-  // leaving: 非 null 表示正处于"旧视图退出中"阶段，此时不渲染新视图
+  const needsTick =
+    cfg.mode === "auto" ||
+    modeOverride === "auto" ||
+    mode === "countdown" ||
+    (mode === "motto" && cfg.motto.rotateSeconds > 0 && cfg.motto.quotes.length > 1);
+
+  useEffect(() => {
+    setNow(Date.now());
+    if (!needsTick) return;
+    let timer: number | null = null;
+    // 对齐系统整秒边界，避免 setInterval 漂移导致倒计时跳秒或停顿
+    const scheduleTick = () => {
+      const delay = Math.max(16, 1000 - (Date.now() % 1000) + 5);
+      timer = window.setTimeout(() => {
+        setNow(Date.now());
+        scheduleTick();
+      }, delay);
+    };
+    scheduleTick();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [needsTick]);
+
+  // 串行转场：旧视图先完全退出，新视图再开始淡入。
+  // 基于 current.mode 与目标 mode 的差异驱动定时器，保证 StrictMode 双执行及快速连切不会卡死黑屏。
   const [current, setCurrent] = useState<ViewSlot>({ mode, key: 0 });
   const [leaving, setLeaving] = useState<ViewSlot | null>(null);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const keyRef = useRef(0);
-  const prevModeRef = useRef<RenderedMode>(mode);
-  const leaveTimer = useRef<number | null>(null);
+  const lastReplayRef = useRef(replayNonce);
 
   useEffect(() => {
-    if (mode === prevModeRef.current) return;
-    const from = prevModeRef.current;
-    prevModeRef.current = mode;
+    if (replayNonce === lastReplayRef.current) return;
+    lastReplayRef.current = replayNonce;
+    keyRef.current += 1;
+    setLeaving(null);
+    setCurrent({ mode, key: keyRef.current });
+  }, [replayNonce, mode]);
 
-    setDirection(from === "countdown" ? "forward" : "backward");
+  useEffect(() => {
+    if (current.mode === mode) {
+      setLeaving(null);
+      return;
+    }
 
-    // 阶段 1：把当前视图标记为 leaving，开始播退出动画
+    setDirection(current.mode === "countdown" ? "forward" : "backward");
     setLeaving(current);
 
-    if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
-    leaveTimer.current = window.setTimeout(() => {
-      // 阶段 2：退出动画播完，卸载旧视图，挂载新视图进入动画
+    const timer = window.setTimeout(() => {
       keyRef.current += 1;
       setCurrent({ mode, key: keyRef.current });
       setLeaving(null);
-      leaveTimer.current = null;
     }, LEAVE_MS);
 
-    return () => {
-      if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
-
-  useEffect(() => {
-    return () => {
-      if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
-    };
-  }, []);
+    return () => window.clearTimeout(timer);
+  }, [mode, current]);
 
   const themeStyle = {
     "--accent": cfg.theme.accent,

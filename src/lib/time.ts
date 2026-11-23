@@ -36,12 +36,6 @@ export function formatStamp(date: Date): string {
   );
 }
 
-/** 23:59:07 */
-export function formatClock(timestamp: number): string {
-  const date = new Date(timestamp);
-  return pad(date.getHours()) + ":" + pad(date.getMinutes()) + ":" + pad(date.getSeconds());
-}
-
 export interface Duration {
   days: number;
   hours: number;

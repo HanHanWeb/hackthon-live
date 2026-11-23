@@ -6,7 +6,7 @@ import { Stage } from "./Stage";
 
 interface LiveConfigHostProps {
   config: AppConfig;
-  serverTime: number;
+  isPreview?: boolean;
 }
 
 const HOTKEYS: Record<string, DisplayMode | null> = {
@@ -20,12 +20,13 @@ const HOTKEYS: Record<string, DisplayMode | null> = {
 /**
  * 大屏外壳：
  * - 独立打开时按后台保存的配置展示，并每 4 秒同步最新版本；
- * - 被后台以 iframe 嵌入时，接收父窗口推送的草稿配置，实现所见即所得预览；
+ * - 被后台以 iframe 嵌入时，接收父窗口推送的草稿配置与重播指令，实现所见即所得预览；
  * - 现场按 1 / 2 / 3 可临时切到倒计时 / 格言 / 轮播，按 0 或 Esc 回到后台设定（不写回配置）。
  */
-export function LiveConfigHost({ config, serverTime }: LiveConfigHostProps) {
+export function LiveConfigHost({ config, isPreview = false }: LiveConfigHostProps) {
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [override, setOverride] = useState<DisplayMode | null | undefined>(undefined);
+  const [replayNonce, setReplayNonce] = useState(0);
 
   useEffect(() => {
     if (window.parent === window) return;
@@ -33,8 +34,11 @@ export function LiveConfigHost({ config, serverTime }: LiveConfigHostProps) {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const data = event.data as { type?: string; config?: unknown } | null;
-      if (data?.type !== "hackathon:preview-config") return;
-      setDraft(normalizeConfig(data.config));
+      if (data?.type === "hackathon:preview-config") {
+        setDraft(normalizeConfig(data.config));
+      } else if (data?.type === "hackathon:preview-replay") {
+        setReplayNonce((value) => value + 1);
+      }
     };
 
     window.addEventListener("message", onMessage);
@@ -43,7 +47,7 @@ export function LiveConfigHost({ config, serverTime }: LiveConfigHostProps) {
   }, []);
 
   useEffect(() => {
-    if (window.parent !== window) return;
+    if (isPreview || window.parent !== window) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       // Ctrl+1 / Cmd+1 是浏览器切标签，不能顺带把大屏也切了
@@ -57,16 +61,16 @@ export function LiveConfigHost({ config, serverTime }: LiveConfigHostProps) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [isPreview]);
 
   const effective = useMemo(() => draft ?? config, [draft, config]);
 
   return (
     <Stage
       config={effective}
-      serverTime={serverTime}
-      live={draft === null}
+      live={!isPreview && draft === null}
       modeOverride={override === undefined ? null : override}
+      replayNonce={replayNonce}
     />
   );
 }

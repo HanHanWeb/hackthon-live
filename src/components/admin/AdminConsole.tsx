@@ -7,6 +7,7 @@ import {
   Card,
   ColorArea,
   ColorField,
+  ColorSlider,
   Input,
   NumberField,
   Slider,
@@ -15,14 +16,18 @@ import {
   TextArea,
   ToggleButton,
   ToggleButtonGroup,
+  parseColor,
+  type Color,
 } from "@heroui/react";
 import {
   COUNTDOWN_FONTS,
   MOTTO_ANIMATIONS,
+  QUOTE_MAX_CHARS,
   QUOTE_MAX_COUNT,
   TEXT_LIMITS,
   validateConfigInput,
   type AppConfig,
+  type ConfigIssue,
   type CountdownConfig,
   type DisplayMode,
   type MottoAnimation,
@@ -54,9 +59,26 @@ const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
 ];
 
 const serialize = (value: unknown) => JSON.stringify(value);
+const VALIDATION_ERROR_MSG = "配置校验失败，请先修正再发布。";
+
+function safeParseHsb(hex: string): Color {
+  try {
+    return parseColor(hex).toFormat("hsb");
+  } catch {
+    return parseColor("#8b5cf6").toFormat("hsb");
+  }
+}
+
+function sectionForField(field: ConfigIssue["field"]): SectionId {
+  if (field.startsWith("motto.")) return "motto";
+  if (field.startsWith("theme.")) return "theme";
+  if (field.startsWith("countdown.")) return "countdown";
+  return "mode";
+}
 
 interface AdminConsoleProps {
   initialConfig: AppConfig;
+  loadError?: string;
 }
 
 interface ToastState {
@@ -64,17 +86,15 @@ interface ToastState {
   tone: "ok" | "error";
 }
 
-export function AdminConsole({ initialConfig }: AdminConsoleProps) {
+export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
   const [saved, setSaved] = useState<AppConfig>(initialConfig);
   const [draft, setDraft] = useState<AppConfig>(initialConfig);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const [quotesText, setQuotesText] = useState(initialConfig.motto.quotes.join("\n"));
   const [saving, setSaving] = useState(false);
-  // 首帧留空，挂载后再格式化，避免服务端 / 浏览器时区不同导致 hydration 不一致
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(loadError ?? null);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [previewKey, setPreviewKey] = useState(0);
   const [scale, setScale] = useState(0.32);
   const [activeSection, setActiveSection] = useState<SectionId>("mode");
   const [headerHeight, setHeaderHeight] = useState(57);
@@ -105,8 +125,20 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   );
 
   const issues = useMemo(() => {
-    const errors = validateConfigInput(draft);
-    const warnings: { field: "startAt" | "targetAt"; message: string }[] = [];
+    const rawErrors = validateConfigInput(draft);
+    // 用文本框实际行号替换过滤空行后的序号，避免前面有空行时提示行号偏移
+    const longRawLineIndex = quotesText
+      .split("\n")
+      .findIndex((line) => line.trim().length > QUOTE_MAX_CHARS);
+    const errors = rawErrors.map((issue) =>
+      issue.field === "motto.quotes" &&
+      longRawLineIndex >= 0 &&
+      issue.message.includes(`超过 ${QUOTE_MAX_CHARS}`)
+        ? { ...issue, message: `第 ${longRawLineIndex + 1} 行格言不能超过 ${QUOTE_MAX_CHARS} 字。` }
+        : issue,
+    );
+
+    const warnings: { field: "targetAt"; message: string }[] = [];
     const target = parseLocal(draft.countdown.targetAt);
 
     if (!target) {
@@ -117,7 +149,13 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
     }
 
     return { errors, warnings };
-  }, [draft]);
+  }, [draft, quotesText]);
+
+  useEffect(() => {
+    if (issues.errors.length === 0 && error === VALIDATION_ERROR_MSG) {
+      setError(null);
+    }
+  }, [issues.errors.length, error]);
 
   const showToast = useCallback((text: string, tone: ToastState["tone"]) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -164,8 +202,20 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
       { rootMargin: "-96px 0px -55% 0px", threshold: 0.05 },
     );
 
+    const onScroll = () => {
+      if (window.scrollY <= 16) {
+        setActiveSection(SECTIONS[0].id);
+      } else if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 24) {
+        setActiveSection(SECTIONS[SECTIONS.length - 1].id);
+      }
+    };
+
     els.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
   useEffect(() => {
@@ -203,7 +253,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
     // 没有改动、或上一次保存还没回来时直接忽略（Ctrl+S 会频繁触发）
     if (!dirty || savingRef.current) return;
     if (issues.errors.length > 0) {
-      setError("配置校验失败，请先修正再发布。");
+      setError(VALIDATION_ERROR_MSG);
       showToast("配置校验失败，请先修正再发布", "error");
       alertRef.current?.focus();
       return;
@@ -262,10 +312,17 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
+  const replay = useCallback(() => {
+    previewRef.current?.contentWindow?.postMessage(
+      { type: "hackathon:preview-replay" },
+      window.location.origin,
+    );
+  }, []);
+
   const reset = () => {
     setDraft(saved);
     setQuotesText(saved.motto.quotes.join("\n"));
-    setPreviewKey((value) => value + 1);
+    replay();
     setError(null);
     showToast("已撤销未发布的更改", "ok");
   };
@@ -287,7 +344,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
       return { ...prev, theme: saved.theme };
     });
     if (id === "motto") setQuotesText(saved.motto.quotes.join("\n"));
-    setPreviewKey((value) => value + 1);
+    replay();
   };
 
   const gotoSection = (id: SectionId) => {
@@ -313,10 +370,8 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
-    patchMotto("quotes", list.length > 0 ? list : [""]);
+    patchMotto("quotes", list);
   };
-
-  const replay = () => setPreviewKey((value) => value + 1);
 
   const modeHint =
     draft.mode === "auto"
@@ -383,10 +438,12 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
           <div className="flex items-center gap-2">
             {error ? <span className="text-xs text-rose-400">{error}</span> : null}
             <Button variant="outline" size="sm" isDisabled={!dirty || saving} onPress={reset}>
+              <IconUndo />
               撤销
             </Button>
             <Button variant="secondary" size="sm" onPress={() => window.open("/", "_blank", "noopener")}>
               打开大屏
+              <IconExternalLink />
             </Button>
             <Button
               variant="primary"
@@ -394,7 +451,19 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               isDisabled={!dirty || saving || blocked}
               onPress={() => void save()}
             >
-              {saving ? "保存中…" : dirty ? "保存并发布" : "已是最新"}
+              {saving ? (
+                "保存中…"
+              ) : dirty ? (
+                <>
+                  <IconPublish />
+                  保存并发布
+                </>
+              ) : (
+                <>
+                  <IconCheck />
+                  已是最新
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -411,7 +480,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                     <button
                       type="button"
                       className="error-link"
-                      onClick={() => gotoSection(issue.field.startsWith("motto.") ? "motto" : "countdown")}
+                      onClick={() => gotoSection(sectionForField(issue.field))}
                     >
                       {issue.message}
                     </button>
@@ -430,77 +499,75 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
           >
             <div className="vstack">
               <div className="flex flex-wrap items-center gap-4">
-                <Segmented value={draft.mode} options={MODE_OPTIONS} onChange={setMode} />
+                <Segmented ariaLabel="展示模式" value={draft.mode} options={MODE_OPTIONS} onChange={setMode} />
               </div>
 
               {draft.mode === "auto" ? (
                 <div className="group">
                   <div className="group-title">轮播规则</div>
-                  <div className="grid-2">
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/2 px-3 py-2">
-                      <div>
-                        <div className="toggle-label">整点对齐</div>
-                        <div className="hint mt-1">按剩余时间逼近整点时切入倒计时</div>
-                      </div>
-                      <Switch
-                        isSelected={draft.autoAlign}
-                        onChange={(value) => setDraft((prev) => ({ ...prev, autoAlign: value }))}
-                        aria-label="整点对齐"
-                      >
-                        <Switch.Content>
-                          <Switch.Control>
-                            <Switch.Thumb />
-                          </Switch.Control>
-                        </Switch.Content>
-                      </Switch>
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/2 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="toggle-label">整点对齐</div>
+                      <div className="hint mt-1">按剩余时间逼近整点时切入倒计时</div>
                     </div>
+                    <Switch
+                      isSelected={draft.autoAlign}
+                      onChange={(value) => setDraft((prev) => ({ ...prev, autoAlign: value }))}
+                      aria-label="整点对齐"
+                    >
+                      <Switch.Content>
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                      </Switch.Content>
+                    </Switch>
+                  </div>
 
-                    {draft.autoAlign ? (
-                      <div className="grid-2">
-                        <Field label="提前切入">
-                          <div className="inline-field">
-                            <NumberInput
-                              label="提前秒数"
-                              min={0}
-                              max={600}
-                              value={draft.autoLeadSeconds}
-                              onChange={(next) => setDraft((prev) => ({ ...prev, autoLeadSeconds: next }))}
-                            />
-                            <span className="unit">秒</span>
-                          </div>
-                        </Field>
-                        <Field label="跨点保持">
-                          <div className="inline-field">
-                            <NumberInput
-                              label="保持秒数"
-                              min={0}
-                              max={600}
-                              value={draft.autoHoldSeconds}
-                              onChange={(next) => setDraft((prev) => ({ ...prev, autoHoldSeconds: next }))}
-                            />
-                            <span className="unit">秒</span>
-                          </div>
-                        </Field>
-                      </div>
-                    ) : (
-                      <Field label="每屏停留">
+                  {draft.autoAlign ? (
+                    <div className="grid-2">
+                      <Field label="提前切入">
                         <div className="inline-field">
                           <NumberInput
-                            label="每屏停留秒数"
-                            min={5}
+                            label="提前秒数"
+                            min={0}
                             max={600}
-                            value={draft.autoSeconds}
-                            onChange={(next) => setDraft((prev) => ({ ...prev, autoSeconds: next }))}
+                            value={draft.autoLeadSeconds}
+                            onChange={(next) => setDraft((prev) => ({ ...prev, autoLeadSeconds: next }))}
                           />
                           <span className="unit">秒</span>
                         </div>
                       </Field>
-                    )}
-                  </div>
+                      <Field label="跨点保持">
+                        <div className="inline-field">
+                          <NumberInput
+                            label="保持秒数"
+                            min={0}
+                            max={600}
+                            value={draft.autoHoldSeconds}
+                            onChange={(next) => setDraft((prev) => ({ ...prev, autoHoldSeconds: next }))}
+                          />
+                          <span className="unit">秒</span>
+                        </div>
+                      </Field>
+                    </div>
+                  ) : (
+                    <Field label="每屏停留">
+                      <div className="inline-field">
+                        <NumberInput
+                          label="每屏停留秒数"
+                          min={5}
+                          max={600}
+                          value={draft.autoSeconds}
+                          onChange={(next) => setDraft((prev) => ({ ...prev, autoSeconds: next }))}
+                        />
+                        <span className="unit">秒</span>
+                      </div>
+                    </Field>
+                  )}
                 </div>
               ) : null}
 
-              <p className="hint hint-block">{modeHint}</p>
+              <p className="hint">{modeHint}</p>
             </div>
           </Section>
 
@@ -526,8 +593,9 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
 
               <div className="group">
                 <div className="group-title">外观</div>
-                <Field label="数字字体" hint="D-DIN 通过 jsDelivr 加载；JetBrains Mono 是之前使用的本地字体。">
+                <Field label="数字字体">
                   <Segmented
+                    ariaLabel="倒计时数字字体"
                     value={draft.countdown.font}
                     options={COUNTDOWN_FONTS}
                     onChange={(font) => patchCountdown("font", font)}
@@ -608,58 +676,59 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
                 <div className="grid-2">
                   <Field label="对齐">
                     <Segmented
+                      ariaLabel="格言对齐方式"
                       value={draft.motto.align}
                       options={ALIGN_OPTIONS}
                       onChange={(align) => patchMotto("align", align)}
                     />
                   </Field>
 
-                  <div className="vstack">
-                    <div>
-                      <span className="label">字号</span>
-                      <Slider
-                        value={draft.motto.fontSize}
-                        minValue={24}
-                        maxValue={160}
-                        step={2}
-                        onChange={(value) =>
-                          patchMotto("fontSize", Array.isArray(value) ? value[0] : value)
-                        }
-                      >
-                        <Slider.Output />
-                        <Slider.Track>
-                          <Slider.Fill />
-                          <Slider.Thumb />
-                        </Slider.Track>
-                      </Slider>
-                      <p className="hint mt-1">以 1920×1080 为基准，实际按屏幕等比缩放。</p>
-                    </div>
-                    <div className="grid-2">
-                      <Field label="轮换间隔" hint="0 = 不轮换">
-                        <div className="inline-field">
-                          <NumberInput
-                            label="轮换间隔秒数"
-                            min={0}
-                            max={600}
-                            value={draft.motto.rotateSeconds}
-                            onChange={(next) => patchMotto("rotateSeconds", next)}
-                          />
-                          <span className="unit">秒</span>
-                        </div>
-                      </Field>
-                      <Field
-                        label="署名（可选）"
-                        count={draft.motto.author.length + "/" + TEXT_LIMITS.author}
-                        error={fieldError("motto.author")}
-                      >
-                        <Input
-                          className="field"
-                          value={draft.motto.author}
-                          onChange={(event) => patchMotto("author", event.target.value)}
-                        />
-                      </Field>
-                    </div>
+                  <div className="field-group">
+                    <span className="label mb-0">字号</span>
+                    <Slider
+                      aria-label="格言字号"
+                      value={draft.motto.fontSize}
+                      minValue={24}
+                      maxValue={160}
+                      step={2}
+                      onChange={(value) =>
+                        patchMotto("fontSize", Array.isArray(value) ? value[0] : value)
+                      }
+                    >
+                      <Slider.Output />
+                      <Slider.Track>
+                        <Slider.Fill />
+                        <Slider.Thumb />
+                      </Slider.Track>
+                    </Slider>
+                    <p className="hint">以 1920×1080 为基准，实际按屏幕等比缩放。</p>
                   </div>
+                </div>
+
+                <div className="grid-2">
+                  <Field label="轮换间隔" hint="0 = 不轮换">
+                    <div className="inline-field">
+                      <NumberInput
+                        label="轮换间隔秒数"
+                        min={0}
+                        max={600}
+                        value={draft.motto.rotateSeconds}
+                        onChange={(next) => patchMotto("rotateSeconds", next)}
+                      />
+                      <span className="unit">秒</span>
+                    </div>
+                  </Field>
+                  <Field
+                    label="署名（可选）"
+                    count={draft.motto.author.length + "/" + TEXT_LIMITS.author}
+                    error={fieldError("motto.author")}
+                  >
+                    <Input
+                      className="field"
+                      value={draft.motto.author}
+                      onChange={(event) => patchMotto("author", event.target.value)}
+                    />
+                  </Field>
                 </div>
               </div>
 
@@ -764,7 +833,6 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
             <Card.Content className="panel-content">
               <div ref={frameRef} className="preview-frame">
                 <iframe
-                  key={previewKey}
                   ref={previewRef}
                   title="大屏实时预览"
                   src="/?preview=1"
@@ -850,9 +918,20 @@ function ColorInput({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const commit = (color: { toString: (format: "hex") => string } | null) => {
+  const [hsb, setHsb] = useState<Color>(() => safeParseHsb(value));
+
+  useEffect(() => {
+    const currentHex = hsb.toString("hex").toLowerCase();
+    if (currentHex !== value.toLowerCase()) {
+      setHsb(safeParseHsb(value));
+    }
+  }, [value, hsb]);
+
+  const commit = (color: Color | null) => {
     if (!color) return;
-    const hex = color.toString("hex");
+    const nextHsb = color.toFormat("hsb");
+    setHsb(nextHsb);
+    const hex = nextHsb.toString("hex");
     onChange((hex.startsWith("#") ? hex : "#" + hex).toLowerCase());
   };
 
@@ -863,16 +942,28 @@ function ColorInput({
         <span className="color-hex">{value}</span>
       </div>
       <ColorArea.Root
-        aria-label={label}
+        aria-label={label + " 饱和度与明度"}
         colorSpace="hsb"
         xChannel="saturation"
         yChannel="brightness"
-        value={value}
+        value={hsb}
         onChange={commit}
         className="color-area"
       >
         <ColorArea.Thumb className="color-area-thumb" />
       </ColorArea.Root>
+      <ColorSlider.Root
+        aria-label={label + " 色相"}
+        colorSpace="hsb"
+        channel="hue"
+        value={hsb}
+        onChange={commit}
+        className="color-slider"
+      >
+        <ColorSlider.Track className="color-slider-track">
+          <ColorSlider.Thumb className="color-slider-thumb" />
+        </ColorSlider.Track>
+      </ColorSlider.Root>
       <ColorField.Root
         aria-label={label + " 十六进制"}
         value={value}
@@ -959,10 +1050,12 @@ function Field({
 }
 
 function Segmented<T extends string>({
+  ariaLabel,
   value,
   options,
   onChange,
 }: {
+  ariaLabel: string;
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
@@ -972,7 +1065,7 @@ function Segmented<T extends string>({
       className="seg-tabs"
       selectedKey={value}
       onSelectionChange={(key) => onChange(key as T)}
-      aria-label="分段选择"
+      aria-label={ariaLabel}
     >
       <Tabs.ListContainer>
         <Tabs.List className="seg-group">
@@ -1018,5 +1111,61 @@ function ToggleRow({
         </Switch.Content>
       </Switch>
     </div>
+  );
+}
+
+function IconExternalLink() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M6.5 3.5H3.5V12.5H12.5V9.5M9.5 3.5H12.5V6.5M12.5 3.5L7.5 8.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconUndo() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M5.5 4L2.5 7L5.5 10M3 7H10A3.5 3.5 0 0 1 10 14H8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconCheck() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 8.5L6.5 11.5L12.5 4.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconPublish() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 11.5V3.5M8 3.5L4.75 6.75M8 3.5L11.25 6.75M3 12.5H13"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

@@ -5,7 +5,7 @@ import type { MottoConfig } from "@/lib/config";
 
 interface MottoViewProps {
   config: MottoConfig;
-  now: number;
+  now: number | null;
 }
 
 const CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
@@ -57,7 +57,9 @@ function tokenize(text: string): Token[] {
 export function MottoView({ config, now }: MottoViewProps) {
   const quotes = config.quotes.length > 0 ? config.quotes : [""];
   const index =
-    config.rotateSeconds > 0 ? Math.floor(now / (config.rotateSeconds * 1000)) % quotes.length : 0;
+    now !== null && config.rotateSeconds > 0
+      ? Math.floor(now / (config.rotateSeconds * 1000)) % quotes.length
+      : 0;
   const quote = quotes[index];
 
   const isFromBottom = config.animation === "from-bottom";

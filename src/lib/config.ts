@@ -34,7 +34,7 @@ export interface CountdownConfig {
 
 export const COUNTDOWN_FONTS: { value: CountdownFont; label: string }[] = [
   { value: "din", label: "D-DIN" },
-  { value: "mono", label: "JetBrains Mono（原字体）" },
+  { value: "mono", label: "JetBrains Mono" },
 ];
 
 /** 四个单位文案：写死，不开放配置 */
@@ -172,15 +172,40 @@ const dateLocal = (value: unknown, fallback: string): string =>
   typeof value === "string" && parseLocal(value) !== null ? value : fallback;
 
 export interface ConfigIssue {
-  field: "countdown.title" | "countdown.subtitle" | "countdown.finishedText" | "motto.quotes" | "motto.author";
+  field:
+    | "root"
+    | "countdown.title"
+    | "countdown.subtitle"
+    | "countdown.targetAt"
+    | "countdown.finishedText"
+    | "motto.quotes"
+    | "motto.author"
+    | "theme.accent"
+    | "theme.accent2";
   message: string;
 }
 
-/** 保存前显式校验会被 normalizeConfig 截断的内容，避免用户以为原文已保存。 */
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** 保存前显式校验会被 normalizeConfig 截断或丢弃的内容，避免用户以为原文已保存。 */
 export function validateConfigInput(input: unknown): ConfigIssue[] {
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  const countdown = (raw.countdown && typeof raw.countdown === "object" ? raw.countdown : {}) as Record<string, unknown>;
-  const motto = (raw.motto && typeof raw.motto === "object" ? raw.motto : {}) as Record<string, unknown>;
+  if (!isPlainObject(input)) {
+    return [{ field: "root", message: "配置必须是合法的 JSON 对象。" }];
+  }
+
+  const raw = input;
+  if (
+    (raw.countdown !== undefined && !isPlainObject(raw.countdown)) ||
+    (raw.motto !== undefined && !isPlainObject(raw.motto)) ||
+    (raw.theme !== undefined && !isPlainObject(raw.theme))
+  ) {
+    return [{ field: "root", message: "配置结构不合法。" }];
+  }
+
+  const countdown = (raw.countdown ?? {}) as Record<string, unknown>;
+  const motto = (raw.motto ?? {}) as Record<string, unknown>;
+  const theme = (raw.theme ?? {}) as Record<string, unknown>;
   const issues: ConfigIssue[] = [];
   const checkLength = (value: unknown, limit: number, field: ConfigIssue["field"], label: string) => {
     if (typeof value === "string" && value.length > limit) {
@@ -193,6 +218,22 @@ export function validateConfigInput(input: unknown): ConfigIssue[] {
   checkLength(countdown.finishedText, TEXT_LIMITS.finishedText, "countdown.finishedText", "倒计时结束文案");
   checkLength(motto.author, TEXT_LIMITS.author, "motto.author", "署名");
 
+  if (
+    typeof countdown.targetAt === "string" &&
+    countdown.targetAt.trim().length > 0 &&
+    parseLocal(countdown.targetAt) === null
+  ) {
+    issues.push({ field: "countdown.targetAt", message: "倒计时结束时间格式无效。" });
+  }
+
+  if (typeof theme.accent === "string" && !/^#[0-9a-fA-F]{6}$/.test(theme.accent)) {
+    issues.push({ field: "theme.accent", message: "主色必须是 6 位十六进制颜色值（如 #8b5cf6）。" });
+  }
+
+  if (typeof theme.accent2 === "string" && !/^#[0-9a-fA-F]{6}$/.test(theme.accent2)) {
+    issues.push({ field: "theme.accent2", message: "辅色必须是 6 位十六进制颜色值（如 #22d3ee）。" });
+  }
+
   if (Array.isArray(motto.quotes)) {
     const nonEmptyQuotes = motto.quotes.filter((quote) => typeof quote === "string" && quote.trim().length > 0);
     if (nonEmptyQuotes.length > QUOTE_MAX_COUNT) {
@@ -200,7 +241,7 @@ export function validateConfigInput(input: unknown): ConfigIssue[] {
     }
     const longQuoteIndex = motto.quotes.findIndex((quote) => typeof quote === "string" && quote.length > QUOTE_MAX_CHARS);
     if (longQuoteIndex >= 0) {
-      issues.push({ field: "motto.quotes", message: `第 ${longQuoteIndex + 1} 行格言不能超过 ${QUOTE_MAX_CHARS} 字。` });
+      issues.push({ field: "motto.quotes", message: `第 ${longQuoteIndex + 1} 句格言不能超过 ${QUOTE_MAX_CHARS} 字。` });
     }
   }
 
