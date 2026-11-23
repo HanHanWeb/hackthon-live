@@ -34,6 +34,13 @@ import { parseLocal } from "@/lib/time";
 
 type SectionId = "mode" | "countdown" | "motto" | "theme";
 
+const SECTIONS: { id: SectionId; label: string }[] = [
+  { id: "mode", label: "展示模式" },
+  { id: "countdown", label: "倒计时" },
+  { id: "motto", label: "格言" },
+  { id: "theme", label: "主题" },
+];
+
 const MODE_OPTIONS: { value: DisplayMode; label: string }[] = [
   { value: "countdown", label: "倒计时" },
   { value: "motto", label: "格言" },
@@ -69,7 +76,10 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [scale, setScale] = useState(0.32);
+  const [activeSection, setActiveSection] = useState<SectionId>("mode");
+  const [headerHeight, setHeaderHeight] = useState(57);
 
+  const headerRef = useRef<HTMLElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLIFrameElement | null>(null);
   const alertRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +134,39 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   useEffect(() => {
     document.title = (dirty ? "● " : "") + "Hackathon Live · 控制台";
   }, [dirty]);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const update = () => setHeaderHeight(Math.ceil(header.getBoundingClientRect().height));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const els = SECTIONS.map((s) => document.getElementById("section-" + s.id)).filter(
+      (el): el is HTMLElement => el !== null,
+    );
+    if (els.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length > 0) {
+          const id = visible[0].target.id.replace("section-", "") as SectionId;
+          setActiveSection(id);
+        }
+      },
+      { rootMargin: "-96px 0px -55% 0px", threshold: 0.05 },
+    );
+
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const element = frameRef.current;
@@ -248,6 +291,7 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   };
 
   const gotoSection = (id: SectionId) => {
+    setActiveSection(id);
     const element = document.getElementById("section-" + id);
     if (element) element.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -294,11 +338,15 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
   const adminTheme = {
     "--accent": draft.theme.accent,
     "--accent-2": draft.theme.accent2,
+    "--admin-header-h": `${headerHeight}px`,
   } as CSSProperties;
 
   return (
     <div className="admin-bg min-h-svh" style={adminTheme}>
-      <header className="admin-head sticky top-0 z-40 border-b border-white/10 bg-[#06070c]/85 backdrop-blur-xl">
+      <header
+        ref={headerRef}
+        className="admin-head sticky top-0 z-40 border-b border-white/10 bg-[#06070c]/85 backdrop-blur-xl"
+      >
         <div className="admin-head-inner">
           <div className="flex min-w-0 items-center gap-3">
             <span className="live-dot" />
@@ -316,6 +364,21 @@ export function AdminConsole({ initialConfig }: AdminConsoleProps) {
               </span>
             )}
           </div>
+
+          <nav className="section-nav" aria-label="配置分区导航">
+            {SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className="section-nav-item"
+                data-active={activeSection === section.id ? "true" : undefined}
+                onClick={() => gotoSection(section.id)}
+              >
+                {sectionDirty[section.id] ? <span className="nav-dirty-dot" aria-hidden="true" /> : null}
+                <span>{section.label}</span>
+              </button>
+            ))}
+          </nav>
 
           <div className="flex items-center gap-2">
             {error ? <span className="text-xs text-rose-400">{error}</span> : null}
