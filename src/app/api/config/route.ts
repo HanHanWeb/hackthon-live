@@ -24,15 +24,21 @@ export async function POST(request: Request) {
   }
 
   const origin = request.headers.get("origin");
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const rawHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const host = rawHost?.split(",")[0]?.trim().toLowerCase();
   if (origin && host) {
     try {
-      if (new URL(origin).host !== host) {
+      if (new URL(origin).host.toLowerCase() !== host) {
         return NextResponse.json({ error: "拒绝跨站写入请求" }, { status: 403, headers: NO_STORE });
       }
     } catch {
       return NextResponse.json({ error: "非法请求来源" }, { status: 403, headers: NO_STORE });
     }
+  }
+
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null && Number(contentLength) > MAX_BODY_LENGTH) {
+    return NextResponse.json({ error: "配置体积过大" }, { status: 413, headers: NO_STORE });
   }
 
   let payload: unknown;

@@ -44,7 +44,14 @@ export function CountdownView({ config, now }: CountdownViewProps) {
   return (
     <>
       <div className="cd-head">
-        <h1 className="cd-title">{config.title}</h1>
+        <h1 className="cd-title">
+          <img
+            src="https://nextstep.org.cn/images/brand/icon-white.svg"
+            alt="NEXTSTEP"
+            draggable={false}
+            className="cd-logo"
+          />
+        </h1>
         {config.subtitle ? <p className="cd-subtitle">{config.subtitle}</p> : null}
       </div>
 

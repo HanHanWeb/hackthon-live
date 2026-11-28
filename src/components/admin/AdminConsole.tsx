@@ -105,9 +105,7 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
   const alertRef = useRef<HTMLDivElement | null>(null);
   const toastTimer = useRef<number | null>(null);
   const savingRef = useRef(false);
-
-  const baseline = useMemo(() => serialize(saved), [saved]);
-  const dirty = useMemo(() => serialize(draft) !== baseline, [draft, baseline]);
+  const pendingReplayRef = useRef(false);
 
   const sectionDirty = useMemo(
     () => ({
@@ -123,6 +121,11 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
     }),
     [draft, saved],
   );
+  const dirty =
+    sectionDirty.mode ||
+    sectionDirty.countdown ||
+    sectionDirty.motto ||
+    sectionDirty.theme;
 
   const issues = useMemo(() => {
     const rawErrors = validateConfigInput(draft);
@@ -229,8 +232,12 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
   }, []);
 
   const pushDraft = useCallback(() => {
-    previewRef.current?.contentWindow?.postMessage(
-      { type: "hackathon:preview-config", config: draft },
+    const target = previewRef.current?.contentWindow;
+    if (!target) return;
+    const shouldReplay = pendingReplayRef.current;
+    pendingReplayRef.current = false;
+    target.postMessage(
+      { type: "hackathon:preview-config", config: draft, replay: shouldReplay },
       window.location.origin,
     );
   }, [draft]);
@@ -279,6 +286,8 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
       if (!preserveCurrentDraft) {
         setDraft(next);
         setQuotesText(next.motto.quotes.join("\n"));
+      } else {
+        setDraft((prev) => ({ ...prev, revision: next.revision, updatedAt: next.updatedAt }));
       }
       showToast(preserveCurrentDraft ? "已保存；保存期间的新编辑已保留" : "已保存", "ok");
     } catch (caught) {
@@ -320,14 +329,15 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
   }, []);
 
   const reset = () => {
+    pendingReplayRef.current = true;
     setDraft(saved);
     setQuotesText(saved.motto.quotes.join("\n"));
-    replay();
     setError(null);
     showToast("已撤销未发布的更改", "ok");
   };
 
   const revertSection = (id: SectionId) => {
+    pendingReplayRef.current = true;
     setDraft((prev) => {
       if (id === "mode") {
         return {
@@ -344,7 +354,6 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
       return { ...prev, theme: saved.theme };
     });
     if (id === "motto") setQuotesText(saved.motto.quotes.join("\n"));
-    replay();
   };
 
   const gotoSection = (id: SectionId) => {
@@ -607,18 +616,6 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
                 <div className="group-title">文案</div>
                 <div className="grid-2">
                   <Field
-                    label="主标题"
-                    count={draft.countdown.title.length + "/" + TEXT_LIMITS.title}
-                    error={fieldError("countdown.title")}
-                  >
-                    <Input
-                      className="field"
-                      value={draft.countdown.title}
-                      placeholder="HACKATHON 2026"
-                      onChange={(event) => patchCountdown("title", event.target.value)}
-                    />
-                  </Field>
-                  <Field
                     label="副标题"
                     count={draft.countdown.subtitle.length + "/" + TEXT_LIMITS.subtitle}
                     error={fieldError("countdown.subtitle")}
@@ -630,18 +627,18 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
                       onChange={(event) => patchCountdown("subtitle", event.target.value)}
                     />
                   </Field>
+                  <Field
+                    label="倒计时结束文案"
+                    count={draft.countdown.finishedText.length + "/" + TEXT_LIMITS.finishedText}
+                    error={fieldError("countdown.finishedText")}
+                  >
+                    <Input
+                      className="field"
+                      value={draft.countdown.finishedText}
+                      onChange={(event) => patchCountdown("finishedText", event.target.value)}
+                    />
+                  </Field>
                 </div>
-                <Field
-                  label="倒计时结束文案"
-                  count={draft.countdown.finishedText.length + "/" + TEXT_LIMITS.finishedText}
-                  error={fieldError("countdown.finishedText")}
-                >
-                  <Input
-                    className="field"
-                    value={draft.countdown.finishedText}
-                    onChange={(event) => patchCountdown("finishedText", event.target.value)}
-                  />
-                </Field>
               </div>
             </div>
           </Section>
@@ -658,7 +655,7 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
                 <div className="group-title">内容</div>
                 <Field
                   label="格言内容"
-                  hint={"每行一句，按顺序轮换；每句不超过 400 字，最多 " + QUOTE_MAX_COUNT + " 句"}
+                  hint={"每行一句，每次切换随机展示新格言；每句不超过 400 字，最多 " + QUOTE_MAX_COUNT + " 句"}
                   count={draft.motto.quotes.length + " 句"}
                   error={fieldError("motto.quotes")}
                 >
@@ -748,8 +745,12 @@ export function AdminConsole({ initialConfig, loadError }: AdminConsoleProps) {
                   onSelectionChange={(keys) => {
                     const next = Array.from(keys as Set<string>)[0];
                     if (typeof next === "string") {
-                      patchMotto("animation", next as MottoAnimation);
-                      replay();
+                      if (next !== draft.motto.animation) {
+                        pendingReplayRef.current = true;
+                        patchMotto("animation", next as MottoAnimation);
+                      } else {
+                        replay();
+                      }
                     }
                   }}
                 >
@@ -919,13 +920,15 @@ function ColorInput({
   onChange: (value: string) => void;
 }) {
   const [hsb, setHsb] = useState<Color>(() => safeParseHsb(value));
+  const hsbRef = useRef(hsb);
+  hsbRef.current = hsb;
 
   useEffect(() => {
-    const currentHex = hsb.toString("hex").toLowerCase();
+    const currentHex = hsbRef.current.toString("hex").toLowerCase();
     if (currentHex !== value.toLowerCase()) {
       setHsb(safeParseHsb(value));
     }
-  }, [value, hsb]);
+  }, [value]);
 
   const commit = (color: Color | null) => {
     if (!color) return;

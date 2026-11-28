@@ -1,6 +1,7 @@
 .shots/
 node_modules
 .next
+.next-dev
 out
 *.log
 .DS_Store

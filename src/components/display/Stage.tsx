@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { AppConfig, DisplayMode } from "@/lib/config";
+import { normalizeConfig, type AppConfig, type DisplayMode } from "@/lib/config";
 import { nearMilestone, parseLocal } from "@/lib/time";
 import { CountdownView } from "./CountdownView";
 import { MottoView } from "./MottoView";
@@ -25,45 +25,59 @@ type RenderedMode = "countdown" | "motto";
 
 interface ViewSlot {
   mode: RenderedMode;
-  /** 每次进入自增，用于重置 CSS 动画 */
+  /** 每次新视图进入自增，用于重置 CSS 动画 */
   key: number;
+  /** 仅在新视图真正切入时播入场动画；快速切回取消离场时不重播 */
+  animateEnter: boolean;
+}
+
+interface LeavingSlot extends ViewSlot {
+  /** 离场 360ms 期间冻结时间，避免退出动画中格言换句或倒计时跳动 */
+  frozenNow: number | null;
 }
 
 export function Stage({ config, live = true, modeOverride = null, replayNonce = 0 }: StageProps) {
   // 首帧置 null，挂载后再取客户端时间，避免服务端与大屏浏览器时区不同触发 Hydration 报错
   const [now, setNow] = useState<number | null>(null);
-  const [cfg, setCfg] = useState<AppConfig>(config);
-  const cfgRef = useRef<AppConfig>(config);
+  const [polledCfg, setPolledCfg] = useState<AppConfig | null>(null);
+  const cfg = live ? (polledCfg ?? config) : config;
+  const cfgRef = useRef<AppConfig>(cfg);
+  cfgRef.current = cfg;
 
   useEffect(() => {
-    setCfg(config);
-    cfgRef.current = config;
+    setPolledCfg(null);
   }, [config]);
 
   useEffect(() => {
     if (!live) return;
     let stopped = false;
     let timer: number | null = null;
+    let activeController: AbortController | null = null;
 
     const schedule = () => {
       if (!stopped) timer = window.setTimeout(() => void sync(), SYNC_INTERVAL);
     };
     const sync = async () => {
+      activeController = new AbortController();
       try {
-        const response = await fetch("/api/config", { cache: "no-store" });
+        const response = await fetch("/api/config", {
+          cache: "no-store",
+          signal: activeController.signal,
+        });
         if (!response.ok) return;
-        const next = (await response.json()) as AppConfig;
+        const next = normalizeConfig(await response.json());
         if (stopped) return;
         const current = cfgRef.current;
         const changed = JSON.stringify(next) !== JSON.stringify(current);
         // 请求串行执行，拒绝低版本响应；同 revision 的内容变化来自手动编辑，也应同步。
         if (next.revision >= current.revision && changed) {
           cfgRef.current = next;
-          setCfg(next);
+          setPolledCfg(next);
         }
       } catch {
-        // 网络抖动时静默重试
+        // 网络抖动或中止请求时静默处理
       } finally {
+        activeController = null;
         // 上一次请求结束后再计时，任何网络时延下都不会重叠。
         schedule();
       }
@@ -72,6 +86,7 @@ export function Stage({ config, live = true, modeOverride = null, replayNonce = 
     schedule();
     return () => {
       stopped = true;
+      activeController?.abort();
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [live]);
@@ -102,11 +117,8 @@ export function Stage({ config, live = true, modeOverride = null, replayNonce = 
     modeOverride,
   ]);
 
-  const needsTick =
-    cfg.mode === "auto" ||
-    modeOverride === "auto" ||
-    mode === "countdown" ||
-    (mode === "motto" && cfg.motto.rotateSeconds > 0 && cfg.motto.quotes.length > 1);
+  const effectiveAuto = modeOverride === "auto" || (!modeOverride && cfg.mode === "auto");
+  const needsTick = effectiveAuto || mode === "countdown";
 
   useEffect(() => {
     setNow(Date.now());
@@ -128,46 +140,64 @@ export function Stage({ config, live = true, modeOverride = null, replayNonce = 
 
   // 串行转场：旧视图先完全退出，新视图再开始淡入。
   // 基于 current.mode 与目标 mode 的差异驱动定时器，保证 StrictMode 双执行及快速连切不会卡死黑屏。
-  const [current, setCurrent] = useState<ViewSlot>({ mode, key: 0 });
-  const [leaving, setLeaving] = useState<ViewSlot | null>(null);
+  const [current, setCurrent] = useState<ViewSlot>({ mode, key: 0, animateEnter: true });
+  const [leaving, setLeaving] = useState<LeavingSlot | null>(null);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const keyRef = useRef(0);
   const lastReplayRef = useRef(replayNonce);
+  const leavingRef = useRef<LeavingSlot | null>(null);
+  const lastQuoteRef = useRef<string | null>(null);
+  const nowRef = useRef<number | null>(now);
+  nowRef.current = now;
 
   useEffect(() => {
     if (replayNonce === lastReplayRef.current) return;
     lastReplayRef.current = replayNonce;
     keyRef.current += 1;
+    leavingRef.current = null;
     setLeaving(null);
-    setCurrent({ mode, key: keyRef.current });
+    setCurrent({ mode, key: keyRef.current, animateEnter: true });
   }, [replayNonce, mode]);
 
   useEffect(() => {
     if (current.mode === mode) {
-      setLeaving(null);
+      if (leavingRef.current !== null) {
+        leavingRef.current = null;
+        setLeaving(null);
+        setCurrent((prev) => (prev.animateEnter ? { ...prev, animateEnter: false } : prev));
+      }
       return;
     }
 
     setDirection(current.mode === "countdown" ? "forward" : "backward");
-    setLeaving(current);
+    const nextLeaving: LeavingSlot = {
+      mode: current.mode,
+      key: current.key,
+      animateEnter: false,
+      frozenNow: nowRef.current,
+    };
+    leavingRef.current = nextLeaving;
+    setLeaving(nextLeaving);
 
     const timer = window.setTimeout(() => {
       keyRef.current += 1;
-      setCurrent({ mode, key: keyRef.current });
+      leavingRef.current = null;
+      setCurrent({ mode, key: keyRef.current, animateEnter: true });
       setLeaving(null);
     }, LEAVE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [mode, current]);
+  }, [mode, current.mode, current.key]);
 
   const themeStyle = {
     "--accent": cfg.theme.accent,
     "--accent-2": cfg.theme.accent2,
   } as CSSProperties;
 
-  const renderView = (slot: ViewSlot, role: "enter" | "leave") => {
+  const renderView = (slot: ViewSlot | LeavingSlot, role: "enter" | "idle" | "leave") => {
     // key 不包含 role：enter → leave 只切换 CSS 动画，不能重新挂载旧视图并重播内部动画
     const isLeaving = role === "leave";
+    const viewNow = isLeaving && "frozenNow" in slot ? slot.frozenNow : now;
     return slot.mode === "countdown" ? (
       <main
         key={`cd-${slot.key}`}
@@ -176,7 +206,7 @@ export function Stage({ config, live = true, modeOverride = null, replayNonce = 
         data-direction={direction}
         aria-hidden={isLeaving}
       >
-        <CountdownView config={cfg.countdown} now={now} />
+        <CountdownView config={cfg.countdown} now={viewNow} />
       </main>
     ) : (
       <div
@@ -186,7 +216,7 @@ export function Stage({ config, live = true, modeOverride = null, replayNonce = 
         data-direction={direction}
         aria-hidden={isLeaving}
       >
-        <MottoView config={cfg.motto} now={now} />
+        <MottoView config={cfg.motto} paused={isLeaving} lastQuoteRef={lastQuoteRef} />
       </div>
     );
   };
@@ -208,7 +238,7 @@ export function Stage({ config, live = true, modeOverride = null, replayNonce = 
 
       <div className="stage-body">
         <div className="stage-viewport">
-          {leaving ? renderView(leaving, "leave") : renderView(current, "enter")}
+          {leaving ? renderView(leaving, "leave") : renderView(current, current.animateEnter ? "enter" : "idle")}
         </div>
       </div>
     </div>

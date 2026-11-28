@@ -62,7 +62,7 @@ async function writeConfig(input: unknown): Promise<AppConfig> {
   const next = normalizeConfig(input);
   const saved: AppConfig = {
     ...next,
-    revision: Math.max(currentRevision + 1, next.revision),
+    revision: currentRevision + 1,
     updatedAt: new Date().toISOString(),
   };
   await fs.mkdir(DATA_DIR, { recursive: true });

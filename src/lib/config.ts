@@ -20,8 +20,6 @@ export type TextAlign = "left" | "center" | "right";
 export type CountdownFont = "din" | "mono";
 
 export interface CountdownConfig {
-  /** 主标题，例如 HACKATHON 2026 */
-  title: string;
   /** 副标题 */
   subtitle: string;
   /** 目标时间，本地时间 naive 字符串：YYYY-MM-DDTHH:mm */
@@ -49,7 +47,6 @@ export const COUNTDOWN_LABELS = {
 export const QUOTE_MAX_COUNT = 50;
 export const QUOTE_MAX_CHARS = 400;
 export const TEXT_LIMITS = {
-  title: 120,
   subtitle: 200,
   finishedText: 200,
   author: 60,
@@ -117,7 +114,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   autoLeadSeconds: 60,
   autoHoldSeconds: 45,
   countdown: {
-    title: "HACKATHON 2026",
     subtitle: "48 小时，从零到一",
     targetAt: "2026-11-20T09:00",
     finishedText: "代码已开写 · LET'S BUILD",
@@ -159,7 +155,12 @@ const bool = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
 
 const num = (value: unknown, fallback: number, min: number, max: number): number => {
-  const n = typeof value === "number" ? value : Number(value);
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : NaN;
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.round(n)));
 };
@@ -174,7 +175,6 @@ const dateLocal = (value: unknown, fallback: string): string =>
 export interface ConfigIssue {
   field:
     | "root"
-    | "countdown.title"
     | "countdown.subtitle"
     | "countdown.targetAt"
     | "countdown.finishedText"
@@ -213,7 +213,6 @@ export function validateConfigInput(input: unknown): ConfigIssue[] {
     }
   };
 
-  checkLength(countdown.title, TEXT_LIMITS.title, "countdown.title", "主标题");
   checkLength(countdown.subtitle, TEXT_LIMITS.subtitle, "countdown.subtitle", "副标题");
   checkLength(countdown.finishedText, TEXT_LIMITS.finishedText, "countdown.finishedText", "倒计时结束文案");
   checkLength(motto.author, TEXT_LIMITS.author, "motto.author", "署名");
@@ -239,7 +238,7 @@ export function validateConfigInput(input: unknown): ConfigIssue[] {
     if (nonEmptyQuotes.length > QUOTE_MAX_COUNT) {
       issues.push({ field: "motto.quotes", message: `格言最多 ${QUOTE_MAX_COUNT} 句，当前 ${nonEmptyQuotes.length} 句。` });
     }
-    const longQuoteIndex = motto.quotes.findIndex((quote) => typeof quote === "string" && quote.length > QUOTE_MAX_CHARS);
+    const longQuoteIndex = motto.quotes.findIndex((quote) => typeof quote === "string" && quote.trim().length > QUOTE_MAX_CHARS);
     if (longQuoteIndex >= 0) {
       issues.push({ field: "motto.quotes", message: `第 ${longQuoteIndex + 1} 句格言不能超过 ${QUOTE_MAX_CHARS} 字。` });
     }
@@ -259,8 +258,9 @@ export function normalizeConfig(input: unknown): AppConfig {
   const quotes = Array.isArray(mottoRaw.quotes)
     ? mottoRaw.quotes
         .filter((q: unknown): q is string => typeof q === "string")
+        .map((q: string) => q.trim())
+        .filter((q: string) => q.length > 0)
         .map((q: string) => q.slice(0, QUOTE_MAX_CHARS))
-        .filter((q: string) => q.trim().length > 0)
         .slice(0, QUOTE_MAX_COUNT)
     : [...DEFAULT_CONFIG.motto.quotes];
 
@@ -271,7 +271,6 @@ export function normalizeConfig(input: unknown): AppConfig {
     autoLeadSeconds: num(raw.autoLeadSeconds, DEFAULT_CONFIG.autoLeadSeconds, 0, 600),
     autoHoldSeconds: num(raw.autoHoldSeconds, DEFAULT_CONFIG.autoHoldSeconds, 0, 600),
     countdown: {
-      title: str(countdownRaw.title, DEFAULT_CONFIG.countdown.title, TEXT_LIMITS.title),
       subtitle: str(countdownRaw.subtitle, DEFAULT_CONFIG.countdown.subtitle, TEXT_LIMITS.subtitle),
       targetAt: dateLocal(countdownRaw.targetAt, ""),
       finishedText: str(countdownRaw.finishedText, DEFAULT_CONFIG.countdown.finishedText, TEXT_LIMITS.finishedText),

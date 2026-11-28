@@ -33,9 +33,11 @@ export function LiveConfigHost({ config, isPreview = false }: LiveConfigHostProp
 
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
-      const data = event.data as { type?: string; config?: unknown } | null;
+      if (event.source !== window.parent) return;
+      const data = event.data as { type?: string; config?: unknown; replay?: boolean } | null;
       if (data?.type === "hackathon:preview-config") {
         setDraft(normalizeConfig(data.config));
+        if (data.replay) setReplayNonce((value) => value + 1);
       } else if (data?.type === "hackathon:preview-replay") {
         setReplayNonce((value) => value + 1);
       }
